@@ -23,12 +23,8 @@ library(ggridges)
 library(caret)
 library(VGAM)
 library(vtable)
+library(broom)
 
-#library(broom)
-# not used library(cowplot)
-# not used library(ggrepel)
-# not used library(wesanderson)
-# not used library(ggpubr)
 
 ```
 
