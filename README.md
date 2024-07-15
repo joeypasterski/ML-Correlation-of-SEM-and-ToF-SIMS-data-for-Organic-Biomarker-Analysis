@@ -9,9 +9,9 @@ Code for the manuscript "Machine Learning Correlation of Electron Micrographs an
 -- In this doc, each min_lab has it's own corresponding data table in the home folder. 
 - Personal progress was tracked the "Project Log" notepad doc. 
 
-## Importing the data
+### Importing the data
 
-- Here I am creating a "full" dataset of all of the integrated peaks
+- Here I create a "full" dataset of all of the integrated peaks
 -- Data is located in the tof_sims_data folder
 -- This dataset is in long form
 -  First each dataset is imported, then columns are selected, the min_lab column column is then appended, and all columns are then combine into two final documents (peak area and peak height datasets)
