@@ -1,0 +1,1210 @@
+---
+title: "ML_tof_sims_supervised"
+author: "joeypasterski"
+date: "2023-05-03"
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+
+```{r loading libraries}
+library(tidyverse)
+library(cluster)
+library(factoextra)
+library(FactoMineR)
+library(janitor)
+library(devtools)
+library(tidymodels)
+library(ggridges)
+library(caret)
+library(VGAM)
+library(vtable)
+
+#library(broom)
+# not used library(cowplot)
+# not used library(ggrepel)
+# not used library(wesanderson)
+# not used library(ggpubr)
+
+```
+
+
+# - General Descirptions and Notes - 
+
+- This code performs supervised ML on ToF-SIMS data sets. There are multiple steps to data curation performed here. All ToF-SIMS data was integrated outside of R and the values for integration were imported for supervised ML. 
+-- Peak height and peak area data were recorded for each of the curated peaks listed in "Creating Dataframes" section of this code.  
+- min_lab labels were defined from via unsupervised ML on SEM-EDS datasets in the code folder "ML_sem_eds_unsupervised.Rmd"
+-- In this doc, each min_lab has it's own corresponding data table in the home folder. 
+- Personal progress was tracked the "Project Log" notepad doc. 
+
+## Importing the data
+
+- Here I am creating a "full" dataset of all of the integrated peaks
+-- Data is located in the tof_sims_data folder
+-- This dataset is in long form
+-  First each dataset is imported, then columns are selected, the min_lab column column is then appended, and all columns are then combine into two final documents (peak area and peak height datasets)
+-
+  
+
+```{r}
+# Importing the data
+## I added the second list of peaks after researching potential peak IDs 
+int_results_1 <- read.csv("Integration_results_combined.csv", stringsAsFactors = TRUE)
+
+int_results_2 <- read.csv("Integration_results_combined_2.csv", stringsAsFactors = TRUE)
+
+int_results_steranes <- read.csv("int_results_steranes.csv", stringsAsFactors = TRUE)
+
+
+#Selecting the relevant data and making a long data frames
+int_results_1 <- int_results_1 %>% 
+  group_by(Center, min_lab, spec_type) %>% 
+  dplyr::select(1, 2, 3, 5, 10, 11) %>% 
+  rename(spot = Dataset.ID)
+
+int_results_2 <- int_results_2 %>% 
+  group_by(Center, min_lab, spec_type) %>% 
+  dplyr::select(1, 2, 3, 5, 10, 11) %>% 
+  filter(Center != "152.1" & Center != "239.1") %>% 
+  rename(spot = Dataset.ID)
+  
+
+int_results_full <- merge(int_results_1, int_results_2, 
+                               all = TRUE)
+
+#int_results_full <- int_results_full %>% 
+#  filter(spec_type != "point")
+
+#Removing blank data frames (this was after visual inspection)
+int_results_full <- int_results_full %>% 
+  filter(spot != "Spot 15_23_32_B" & 
+           spot != "Spot 15_23_32_G" & 
+           spot != "Spot 15_23_32_R" & 
+           spot != "Spot 16_mz23_32_R" &
+           spot != "Spot 15_23_11_B" &
+           spot != "Spot 15_23_11_G" &
+           spot != "Spot 15_23_11_R")
+
+#Now Making Factor Levels
+int_results_full$min_lab <- factor(int_results_full$min_lab, levels = c("org_60_100", "org_40_60", "org_20_40", "org_0_20", "S_rich", "Ca_rich", "phos"))
+
+#And making Center a factor
+int_results_full$Center <- as.factor(int_results_full$Center)
+
+int_results_full <- as.data.frame(int_results_full)
+
+# NOTE FOR FUTURE SELF: Having duplicates will ruin the pivot_wider() function. 
+
+## Check for duplicates with this code: 
+
+# DATA.FRAME %>%
+#     dplyr::group_by(spot, min_lab, spec_type, Center) %>%
+#     dplyr::summarise(n = dplyr::n(), .groups = "drop") %>%
+#     dplyr::filter(n > 1L)
+
+```
+
+
+
+# Creating Dataframes 
+
+## For Peak Area
+
+```{r}
+# Making the wider datsets
+int_results_area <-  pivot_wider(int_results_full, 
+                                      id_cols = c(spot, min_lab, spec_type),
+                                      names_from = Center,
+                                      values_from = Area)
+
+######
+
+## OPTIONAL DATA FILTER
+
+#####
+# int_results_area <- int_results_area %>% 
+#   dplyr::filter(spec_type != "regional" )
+
+
+# Making NA's 0's 
+int_results_area[is.na(int_results_area)] <- 0
+
+
+# Assigning column levels
+int_results_area <- int_results_area[ , c("min_lab", "spec_type", "spot", 
+                                          "38", "39", "41", "43.1", "51", 
+                                             "55.1", "55.9", "56.1", "57.1", 
+                                             "58.1", "63.1", "65.1", "67.1", 
+                                             "69.1", "71.1", "73.1", "74", 
+                                             "77.1", "79.1", "81.1", "84.1",
+"85.1", "86", "87", "91.1", "95.9", "98", "99", "102.1", "102.9", "105.1",
+"107.1", "108.1", "110.1", "111", "111.9", "112.9", "114", "114.9", "115.1",
+"117.1", "118.1", "119.1", "121.1", "122", "123", "127.1", "128.1", "129.1",
+"131.1", "132.9", "133.1", "134", "135.1", "137", "139.1", "141.1", "145",
+"146", "147.1", "149.1", "152.1", "153.1", "155.1", "157.1", "158", "158.9",
+"161", "163.1", "165.1", "171.1", "173.1", "174.9", "176.1", "177.1", "178.1",
+"184.1", "189.1", "191.1", "193.1", "196.1", "202.1", "203.1", "205.1", "213.1",
+"215.1", "217.1", "226.1", "228.1", "230.9", "231.1", "237.1", "239.1", "257.1",
+"261.1", "263.1", "265.1", "271.1", "272.1", "276.1", "281.1", "286.6", "286.9",
+"300.1", "302.1", "335.7", "336.8", "342.8", "344.8", "346.7", "348.7", "370.3",
+"372.3", "384.3", "386.3", "408.8", "485.4", "546.4", "596.2", "651.9")]
+
+
+## Adding prefix using paste()
+### Both area and height data sets have a prefix of A_
+#### Datasets are changed for each analysis, but the unified simplifies the code.
+original_cols_area <- colnames(int_results_area)
+  print (original_cols_area)
+  
+colnames(int_results_area) <- paste("A", original_cols_area, sep = "_")
+
+```
+
+
+## For Peak Height
+
+```{r}
+
+# Making the wider datsets
+int_results_height <-  pivot_wider(int_results_full, 
+                                      id_cols = c(spot, min_lab, spec_type),
+                                      names_from = Center,
+                                      values_from = Height)
+# Making NA's 0's 
+int_results_height[is.na(int_results_height)] <- 0
+
+
+# Assigning column levels
+int_results_height <- int_results_height[ , c("min_lab", "spec_type", "spot", 
+                                          "38", "39", "41", "43.1", "51", 
+                                             "55.1", "55.9", "56.1", "57.1", 
+                                             "58.1", "63.1", "65.1", "67.1", 
+                                             "69.1", "71.1", "73.1", "74", 
+                                             "77.1", "79.1", "81.1", "84.1",
+"85.1", "86", "87", "91.1", "95.9", "98", "99", "102.1", "102.9", "105.1",
+"107.1", "108.1", "110.1", "111", "111.9", "112.9", "114", "114.9", "115.1",
+"117.1", "118.1", "119.1", "121.1", "122", "123", "127.1", "128.1", "129.1",
+"131.1", "132.9", "133.1", "134", "135.1", "137", "139.1", "141.1", "145",
+"146", "147.1", "149.1", "152.1", "153.1", "155.1", "157.1", "158", "158.9",
+"161", "163.1", "165.1", "171.1", "173.1", "174.9", "176.1", "177.1", "178.1",
+"184.1", "189.1", "191.1", "193.1", "196.1", "202.1", "203.1", "205.1", "213.1",
+"215.1", "217.1", "226.1", "228.1", "230.9", "231.1", "237.1", "239.1", "257.1",
+"261.1", "263.1", "265.1", "271.1", "272.1", "276.1", "281.1", "286.6", "286.9",
+"300.1", "302.1", "335.7", "336.8", "342.8", "344.8", "346.7", "348.7", "370.3",
+"372.3", "384.3", "386.3", "408.8", "485.4", "546.4", "596.2", "651.9")]
+
+
+## Adding prefix using paste()
+### Both area and height data sets have a prefix of A_
+#### Datasets are changed for each analysis, but the unified simplifies the code.
+original_cols_height <- colnames(int_results_height)
+  print (original_cols_height)
+  
+colnames(int_results_height) <- paste("A", original_cols_area, sep = "_")
+
+# Writing csv's for both of the datasets
+write_csv(int_results_area, "int_results_area.csv")
+write_csv(int_results_height, "int_results_height.csv")
+
+```
+
+
+# Merging the spot and steranes labels witht the datasets 
+
+```{r}
+
+# For Area
+int_area_join <- merge (int_results_area, int_results_steranes, 
+                        by = c("A_spot", "A_min_lab", "A_spec_type"))
+int_area_join_2 <- int_area_join[, c(2, 3, 124, 125, 1, 4:123)]
+
+int_results_area <- int_area_join_2
+
+
+# For Height
+int_height_join <- merge (int_results_height, int_results_steranes, 
+                        by = c("A_spot", "A_min_lab", "A_spec_type"))
+int_height_join_2 <- int_height_join[, c(2, 3, 124, 125, 1, 4:123)]
+
+int_results_height <- int_height_join_2
+
+```
+
+
+
+
+# -- Machine Learning --
+
+The first goal of this machine learning for me is to: - Determine which
+peaks control the area and height of mz 55.1
+
+Here are the videos i watched to learn machine learning: -
+<https://www.youtube.com/watch?v=el8xP38SWdk> - 
+<https://www.youtube.com/watch?v=z8PRU46I3NY> - 
+<https://www.youtube.com/watch?v=SeyghJ5cdm4>
+
+#### 2. Removing Outliers in the Total Dataset
+
+Here, outliers are removed 
+
+- Note that the quantiles percentage was selected through iterative plotting tests across multiple quantile values.   
+
+
+```{r}
+
+## FOR PEAK AREA
+
+#Defining probabilities for the quantile() function
+my_quant_lower <- 0.25
+my_quant_upper <- 0.75
+
+data_select <- int_results_area$A_55.1
+
+
+# #Creating the dataset for the forloop
+Q1 <- quantile(data_select, my_quant_lower)
+Q3 <- quantile(data_select, my_quant_upper)
+IQR <- IQR(int_results_area$A_55.1)
+
+int_results_area_cleaned <- subset(int_results_area, data_select > (Q1 - 1.5*IQR) & data_select < (Q3 + 1.5*IQR))
+
+dim(int_results_area)
+dim(int_results_area_cleaned)
+
+
+## FOR PEAK HEIGHT
+
+my_quant_lower <- 0.25
+my_quant_upper <- 0.75
+
+data_select <- int_results_height$A_55.1
+
+# #Creating the dataset for the forloop
+Q1 <- quantile(data_select, my_quant_lower)
+Q3 <- quantile(data_select, my_quant_upper)
+IQR <- IQR(int_results_height$A_55.1)
+
+int_results_height_cleaned <- subset(int_results_height, data_select > (Q1 - 1.5*IQR) & data_select < (Q3 + 1.5*IQR))
+
+dim(int_results_height)
+dim(int_results_height_cleaned)
+
+
+```
+
+#### Exploratory Unsupervised Machine Learning on ToF-SIMS Data
+
+- Here I am using the glm model
+-- Can also use quasipoison as the family operator in the code
+--- This deals with over-dispersion of the data
+---- See: https://cran.r-project.org/web/packages/pscl/vignettes/countreg.pdf
+-- For now, this is a tool for exploring the relationships between the ions. 
+
+
+```{r}
+# MAKING THE TESTING VARIABLE
+
+ml_int_area <- int_results_area_cleaned %>%   ### ADD THE NEW DATAFRAME HERE
+  dplyr::select(-A_spot, -A_min_lab, -A_spec_type) %>%
+  dplyr::select(-spot, -steranes)  ### This is the optinoal filter
+ 
+# CODE CUT 1. 
+
+print("ML Against mz A_55.1")                                  ### ADD VARIBALE
+ 
+#####
+
+# Machine Learning
+
+set.seed(123)
+
+#  - Building the Data  - 
+
+# CODE CUT 2.
+
+# Pulling out random parts of data 
+
+TrainingIndex <- createDataPartition(ml_int_area$A_55.1 , p=0.8, list = FALSE) 
+                                                        ### ADD VARIBALE (ABOVE)
+train.control <- trainControl(method = "repeatedcv",
+                             number = 100,
+                             repeats = 3)
+
+TrainingSet <- ml_int_area[TrainingIndex, ] #Training set, this can be specified via trainControl()
+TestingSet <- ml_int_area[-TrainingIndex, ] #Test set
+
+#####
+
+# - Build Training Model - 
+
+Model <- train(A_55.1 ~ .,                                     ### ADD VARIBALE
+               data = TrainingSet, 
+               method = "glm", 
+               na.action = na.omit, 
+               preProcess = c("scale", "center"),
+              # family = quasipoisson(),
+               trControl = trainControl(method = "none")
+               )
+
+# Apply model for prediction
+
+Model.training <- predict(Model, TrainingSet) #Apply model to make predictions on the training set
+Model.testing <- predict(Model, TestingSet) #Apply model to make predictions on the testing set
+
+# Model performance (Show scatter plot and performance metric)
+ 
+plot(TrainingSet$A_55.1 , Model.training, col = "blue")         ### ADD VARIBALE
+plot(TestingSet$A_55.1 , Model.testing, col = "blue")           ### ADD VARIBALE
+
+# Model performance summary
+
+summary(Model)
+
+
+# Calculating Person's correlation coefficient 
+
+rSquare_train <- (cor(TrainingSet$A_55.1 , Model.training))^2   ### ADD VARIBALE
+rSquare_test <- (cor(TestingSet$A_55.1 , Model.testing))^2      ### ADD VARIBALE
+
+print(rSquare_train)
+print(rSquare_test)
+
+
+# CUT CODE
+
+## 1
+### ml_int_area_test <- int_results_area_cleaned %>% 
+###   dplyr::select(-A_spot, -A_min_lab, -A_spec_type)
+
+## 2
+### This is how you train dummy variables, which are factor variables
+### This worked, but it just does the same thing as removing the factor columns. 
+
+### dummy.vars <- dummyVars(~., data = ml_int_area_train[ ,1:2])
+### train.dummy <- predict(dummy.vars, ml_int_area_train[ ,1:2])
+
+```
+
+
+
+```{r}
+# MAKING THE TESTING VARIABLE
+
+ml_int_height <- int_results_height_cleaned %>% 
+  dplyr::select(-A_spot, -A_min_lab, -A_spec_type) %>%
+  dplyr::select(-spot, -steranes)               ### This is the optinoal filter
+  
+# CODE CUT 1.
+
+print("ML Against mz H_171.1")                                  ### ADD VARIBALE
+ 
+#####
+
+# Machine Learning
+
+set.seed(123)
+
+#  - Building the Data  - 
+
+# CODE CUT 2.
+
+# Pulling out random parts of data 
+
+TrainingIndex <- createDataPartition(ml_int_height$A_171.1 , p=0.7, list = FALSE) 
+                                                        ### ADD VARIBALE (ABOVE)
+train.control <- trainControl(method = "repeatedcv",
+                             number = 100,
+                             repeats = 3)
+
+TrainingSet <- ml_int_height[TrainingIndex, ] #Training set, this can be specified via trainControl()
+TestingSet <- ml_int_height[-TrainingIndex, ] #Test set
+
+#####
+
+# - Build Training Model - 
+
+Model <- train(A_171.1 ~ .,                                     ### ADD VARIBALE
+               data = TrainingSet, 
+               method = "glm", 
+               na.action = na.omit, 
+               preProcess = c("scale", "center"), 
+               trControl = trainControl(method = "none")
+               )
+
+# Apply model for prediction
+
+Model.training <- predict(Model, TrainingSet) #Apply model to make predictions on the training set
+Model.testing <- predict(Model, TestingSet) #Apply model to make predictions on the testing set
+
+# Model performance (Show scatter plot and performance metric)
+ 
+plot(TrainingSet$A_171.1 , Model.training, col = "blue")         ### ADD VARIBALE
+plot(TestingSet$A_171.1 , Model.testing, col = "blue")           ### ADD VARIBALE
+
+# Model performance summary
+
+summary(Model)
+
+
+# Calculating Person's correlation coefficient 
+
+rSquare_train <- (cor(TrainingSet$A_171.1 , Model.training))^2   ### ADD VARIBALE
+rSquare_test <- (cor(TestingSet$A_171.1 , Model.testing))^2      ### ADD VARIBALE
+
+print(rSquare_train)
+print(rSquare_test)
+
+# CUT CODE
+
+## 1
+### ml_int_height_test <- int_results_height_cleaned %>% 
+###   dplyr::select(-H_spot, -H_min_lab, -H_spec_type)
+
+## 2
+### This is how you train dummy variables, which are factor variables
+### This worked, but it just does the same thing as removing the factor columns. 
+
+### dummy.vars <- dummyVars(~., data = ml_int_height_train[ ,1:2])
+### train.dummy <- predict(dummy.vars, ml_int_height_train[ ,1:2])
+
+```
+
+
+
+# Predictive (Supervised) Machine Learning
+
+Based off of this YouTube video:
+<https://www.youtube.com/watch?v=_0KwZG5xq7c>
+
+```{r}
+# Loading libraries for this section
+
+library(MASS)
+library(rpart)
+library(psych)
+library(rattle)
+library(gmodels)
+library(class)
+
+```
+
+## Preparing the Data
+
+- Including normalization if needed
+
+# HERE IS WHERE YOU NEED TO ADD THE HEIGHT/ AREA DATASET
+
+```{r}
+class(int_results_area_cleaned)
+class(int_results_height_cleaned)
+
+set.seed(123)
+
+#####
+
+# - Fetching the Data - 
+
+ml_predict_int_area <- int_results_area_cleaned %>%  # ADD THE DATASET HERE
+  dplyr::select(-A_spot, -A_spec_type) %>% 
+  dplyr::select( -spot, -steranes) %>%                ### This is the optional filter
+  dplyr::select(- A_132.9, - A_485.4)                      ### This is the optional filter
+  
+  
+  # dplyr::filter(A_min_lab == "phos" | 
+  #               A_min_lab == "Ca_rich" | 
+  #               A_min_lab == "S_rich")   ### This is the optional filter
+
+
+########
+
+# # For SPOT Classification (The spot Names Need to be Specific Numbers)
+# ml_predict_int_area$spot[ml_predict_int_area$spot == 9] <- "1"
+# ml_predict_int_area$spot[ml_predict_int_area$spot == 10] <- "2"
+# ml_predict_int_area$spot[ml_predict_int_area$spot == 15] <- "3"
+# ml_predict_int_area$spot[ml_predict_int_area$spot == 16] <- "4"
+# 
+# ml_predict_int_area$spot <- as.factor(ml_predict_int_area$spot)
+
+########
+
+# For Org vs. Inorg Classification (The last term can vary based on the test)
+ml_predict_int_area <- ml_predict_int_area %>%
+  dplyr::mutate(A_min_lab =
+    if_else(
+        A_min_lab == "org_60_100" |
+        A_min_lab == "org_40_60" |
+        A_min_lab == "org_20_40" |
+        A_min_lab == "org_0_20" |
+        A_min_lab == "S_rich" 
+        , "YES", "NO")
+  )
+
+# # SHUFFLING ROWS FOR TESTING KNN MODEL
+
+#ml_predict_int_area <- transform(ml_predict_int_area, A_38 = sample(A_38))
+
+######## 
+
+### NORM SCHEME 1 and 2. This Code Normalizes via preProcess in caret
+
+## Can do either: 
+# - - method = c("center", "scale", "nvz"), or
+# - - method = c("range", "nvz") - this normalizes to the min-max of each column
+
+ml_predict_int_area_norm <- ml_predict_int_area
+
+ml_predict_int_area_norm$A_min_lab <- as.factor(ml_predict_int_area_norm$A_min_lab)  # CHANGE VARIBALE
+
+process <- preProcess(as.data.frame(ml_predict_int_area_norm), method = c("range"))
+
+ml_predict_int_area_norm <- predict(process, as.data.frame(ml_predict_int_area_norm))
+
+
+####### 
+
+### NORM SCHEME 3.
+
+# This code does a log tranformation of all numeric values
+## It also replaces NA's with 0's later
+# 
+# ml_predict_int_area_norm <- ml_predict_int_area
+# 
+# ml_predict_int_area_norm[ml_predict_int_area_norm == 0] <- NA
+# 
+# ml_predict_int_area_norm[, 2:119] <- log(ml_predict_int_area_norm[2:119], 2)
+# 
+# ml_predict_int_area_norm[is.na(ml_predict_int_area_norm)] <- 0
+# 
+# ml_predict_int_area_norm <- as.data.frame(ml_predict_int_area_norm)
+# 
+# ####### 
+
+## Numerizing the Labels
+
+ml_predict_int_area_norm$A_min_lab <- as.numeric(ml_predict_int_area_norm$A_min_lab)    # CHANGE VARIABLE
+
+ml_predict_int_area_norm$A_min_lab <- (ml_predict_int_area_norm$A_min_lab) - 1          # CHANGE VARIABLE
+
+# I need to numerize the columns for the knn and XGBoost models
+## Note that the labels needed to be from 0 - n for the XGBoost model
+# ml_predict_int_area_norm <- ml_predict_int_area_norm
+
+```
+
+
+
+# Removing inorganic ions 
+## Only Run When Testing "Organic Only" ions!
+
+```{r}
+
+ ml_predict_int_area_norm <- ml_predict_int_area_norm %>% 
+  dplyr::select(-A_651.9, -A_230.9, -A_335.7, -A_55.9, -A_58.1, -A_95.9, 
+                -A_102.9, -A_111.9, -A_112.9, -A_114.9, -A_158.9, 
+                -A_174.9, -A_215.1, -A_217.1, -A_230.9, -A_286.6, 
+                -A_286.9, -A_335.7, -A_336.8, -A_342.8, -A_344.8, -A_596.2, -A_651.9, 
+                -A_346.7, -A_348.7, -A_171.1, -A_57.1)
+
+```
+
+
+### IMPUTED LABELS
+  
+# 0. org_60_100
+# 1. org_40_60
+# 2. org_20_40
+# 3. org_0_20
+# 4. S_rich
+# 5. Ca_rich
+# 6. phos
+
+
+## Supervised Machine Learning
+
+- First, the datasets are partitioned into training and testing sets. 
+- Then, the four featured models are created and tested. 
+-- After, a series of models that were tested but not featured in the publication are presented. 
+
+
+## Sampling the Data for Supervised ML
+
+
+```{r}
+
+set.seed(123)
+
+TrainingIndex <- createDataPartition(ml_predict_int_area_norm$A_min_lab , p=0.7, list = FALSE) 
+                                                        ### ADD VARIBALE (ABOVE)
+train.control <- trainControl(method = "repeatedcv",
+                             number = 100,
+                             repeats = 3, 
+                             verbose = FALSE, 
+                             classProbs = TRUE)
+
+train_area <- ml_predict_int_area_norm[TrainingIndex, ] #Training set, this can be specified via trainControl()
+test_area <- ml_predict_int_area_norm[-TrainingIndex, ] #Test set
+
+
+# Creating separate dataframe for 'Predictability' feature which is our target
+train_labels <- train_area[ , 1]
+test_labels <- test_area[ ,1]
+
+
+```
+
+
+
+# Creating and Testing Supervised ML Models
+
+
+###### KNN MODEL ######
+
+
+```{r}
+# Machine Learning
+
+set.seed(123)
+
+#### Datasets were built in one step. See code block at line 518.
+
+## The k value should be roughly the square root of the number of rows
+sqrt(nrow(train_area)) # = 18.11
+
+# Building and testing the models
+ml_predict_knn.17 <- knn(train = train_area, 
+                    test = test_area,
+                    cl = train_labels, 
+                    k = 17
+                    )
+
+ml_predict_knn.18 <- knn(train = train_area, 
+                    test = test_area,
+                    cl = train_labels, 
+                    k = 18
+                    )
+
+ml_predict_knn.19 <- knn(train = train_area, 
+                    test = test_area,
+                    cl = train_labels, 
+                    k = 19
+                    )
+print("KNN Model,
+      IMPUTED LABELS:
+      1. org_60_100
+      2. org_40_60
+      3. org_20_40
+      4. org_0_20
+      5. S_rich
+      6. Ca_rich 
+      7. phos")
+
+# Visualizing and interpreting model stats
+print("knn.17 results")
+### knn.17
+caret::confusionMatrix(as.factor(test_labels), ml_predict_knn.17)
+
+#CrossTable(x = test_labels, y = ml_predict_knn.17, prop.chisq = FALSE)
+
+print("knn.18 results")
+### knn.18
+caret::confusionMatrix(as.factor(test_labels), ml_predict_knn.18)
+
+#CrossTable(x = test_labels, y = ml_predict_knn.18 , prop.chisq = FALSE)
+
+print("knn.19 results")
+### knn.19
+caret::confusionMatrix(as.factor(test_labels), ml_predict_knn.19)
+
+
+```
+
+
+
+###### Clasification and Regression Trees Model (CART) ######
+
+- rpart
+
+```{r}
+
+set.seed(123)
+
+# Builinding and testing the model
+ml_predict_rpart <- rpart(A_min_lab ~ .,            # CHANGE VARIABLE
+                         data = train_area, 
+                         method = "class")          # CHANGE PARAMETER 
+                                                    # method = "class" for class
+                                                    # method = 
+
+# Plotting
+print("CLASS Model")
+plot(ml_predict_rpart, uniform = TRUE, main = "ML Predict TEST Tree")
+text(ml_predict_rpart, use.n = TRUE, all = TRUE, cex = 0.8)
+
+fancyRpartPlot(ml_predict_rpart, main = "Rpart Predcit Tree", cex = 0.8)
+
+# Stats 
+summary(ml_predict_rpart)
+
+# Now Testing the Model
+ml_predict_rpart_pred <- predict(ml_predict_rpart, test_area, type = "class")
+
+# Showing these results as a matrix
+# CrossTable(x = test_area$A_min_lab, y = ml_predict_rpart_pred, prop.chisq = FALSE)
+
+caret::confusionMatrix(as.factor(test_labels), ml_predict_rpart_pred)
+
+CART_Var_imp <- as.data.frame(ml_predict_rpart$variable.importance)
+
+print(CART_Var_imp)
+
+```
+ 
+ 
+###### The XGBoost Model ######
+
+The first attempt at XGBoost was from this video: 
+ https://www.youtube.com/watch?v=woVTNwRrFHE
+ 
+ The plot showing the error changing with more interations is one way to
+ optimize the model
+ - The 'train' and 'test' lines should not diverge
+ 
+ - Thinks I tried to optimize 
+ - - I first reduced the "eta" paramter in the model (It helped)
+ 
+
+```{r}
+library(Matrix)
+library(xgboost)
+library(magrittr)
+library(DiagrammeR)
+
+
+set.seed(123)
+
+###  - Building the Datasets  - 
+
+# Creating separate dataframe for 'Predictability' feature which is our target
+## These need to be integers here
+train_labels <- as.integer(train_area[ , 1])
+test_labels <- as.integer(test_area[ , 1])
+
+# Making the data an XGB matric (required)
+## This is the One-hot Encoding step
+train_m <- sparse.model.matrix(A_min_lab ~ ., -1, data = train_area)      # CHANGE VARIABLE
+
+train_matrix <- xgb.DMatrix(data = as.matrix(train_m), 
+                            label = train_labels)
+
+test_m <- sparse.model.matrix(A_min_lab ~ ., -1, data = test_area)        # CHANGE VARIABLE
+
+test_matrix <- xgb.DMatrix(data = as.matrix(test_m), 
+                            label = test_labels)
+
+#There are a lot of parameters to set
+## These are the defaults from the video above
+number_classes <- length(unique(train_labels))
+xgb_params <- list(
+                   booster = "gbtree",
+                   objective = "multi:softmax",
+                   eval_metric = "mlogloss", 
+                   num_class = number_classes,
+                   eta = 0.31, # optimized fro gbtree
+                   max_depth = 2 
+                   )
+
+watchlist <- list(train = train_matrix, test = test_matrix)
+
+# 
+ml_predict_xgb <- xgb.train(params = xgb_params, 
+                            data = train_matrix, 
+                            nrounds = 23, 
+                            watchlist = watchlist
+                            )
+
+# Plotting the error 
+## This is where you don't want the lines to diverge
+error <- data.frame(ml_predict_xgb$evaluation_log)
+plot(error$iter, error$train_mlogloss, col = "blue")
+lines(error$iter, error$test_mlogloss, col = "red")
+
+# Feature importance
+## This is telling you which features are important
+### For me that means which ions
+imp <- xgb.importance(colnames(train_matrix), model = ml_predict_xgb)
+write_csv(imp, "XGBoost model Importance.csv")
+print(imp)
+xgb.plot.importance(imp)
+
+#Saving the splits to a doc
+xgb.dump(ml_predict_xgb, with_stats = TRUE)
+
+summary(ml_predict_xgb)
+
+min(error$test_mlogloss)
+
+##### 
+
+# Predictions and Confusion Matrix/ Crosstable 
+## First getting the data ready
+xgb_preds <- predict(ml_predict_xgb, test_matrix, reshape = TRUE)
+xgb_pred_fac <- as.factor(xgb_preds) #this needs to be a factor
+
+
+# Making the confusion matrix
+caret::confusionMatrix(as.factor(test_labels), xgb_pred_fac)
+
+# And Making the Crosstable
+# CrossTable(x = as.factor(test_labels), y = xgb_pred_fac, prop.chisq = FALSE)
+
+
+```
+
+
+
+###### Random Forest Modelling ######
+
+
+```{r}
+
+library(caret)
+library(randomForest)
+
+set.seed(123)
+
+# These need to be factors here
+train_area$A_min_lab <- as.factor(train_area$A_min_lab)           # CHANGE VARIABLE
+test_area$A_min_lab <- as.factor(test_area$A_min_lab)             # CHANGE VARIABLE
+
+
+# Building and testing the model
+model_rf <- train(A_min_lab ~ .,                                  # CHANGE VARIABLE
+               data = train_area, 
+               method = "rf", 
+               na.action = na.omit, 
+               #preProcess = c("scale", "center"),
+               #family = quasipoisson(),
+               trControl = trainControl(method = "none")
+               )
+
+model_rf_preds <- predict(model_rf, test_area, reshape = FALSE)
+model_rf_pred_fac <- as.factor(model_rf_preds) #this needs to be a factor
+test_labels <- as.factor(test_labels)
+
+varImp(model_rf)
+
+
+# Visualizing and inerpreting performance
+print("RF Results")
+# Making the confusion matrix
+caret::confusionMatrix(test_labels, model_rf_pred_fac)
+
+# And Making the Crosstable
+# CrossTable(x = as.factor(test_labels), y = model_rf_pred_fac, prop.chisq = FALSE)
+
+```
+
+
+
+
+# Models that were tested but not featured
+- These models were tested, but performance was equal-to or below that of the featured models. Still, it is worth keeping these models in the code-block for later reference if need be. 
+
+###### LogitBoost ######
+
+- LogitBoost Model
+- ref: https://www.r-bloggers.com/2021/05/linear-discriminant-analysis-in-r/
+
+```{r}
+library(caTools) 
+
+train_area_logBoost <- ml_predict_int_area_norm[TrainingIndex, -1] #Training set, this can be specified via trainControl()
+test_area_logBoost <- ml_predict_int_area_norm[-TrainingIndex, -1] #Test set
+
+train_labels <- as.factor(train_labels)
+test_labels <- as.factor(test_labels)
+
+
+ml_logBoost <- LogitBoost(train_area_logBoost, train_labels, nIter=50)
+
+ml_logBoost_pred <- predict(ml_logBoost, test_area_logBoost)
+
+ml_logBoost_pred <- as.factor(ml_logBoost_pred)
+# test_labels <- as.factor(test_labels) 
+print("LogitBoost Results")
+caret::confusionMatrix(as.factor(test_labels), ml_logBoost_pred)
+
+
+
+# CrossTable(x = as.factor(test_labels), y = ml_logBoost_pred, prop.chisq = FALSE)
+
+```
+
+# Support Vector Modelling (SVM)
+- Resource: https://www.edureka.co/blog/support-vector-machine-in-r/#:~:text=SVM%20(Support%20Vector%20Machine)%20is,boundary%20between%20the%20various%20classes.
+
+
+```{r}
+
+set.seed(123)
+
+train_area$A_min_lab <- as.factor(train_area$A_min_lab)       # CHANGE LABELS (2 Spots)
+test_area$spot <- as.factor(test_area$A_min_lab)         # CHANGE LABELS (2 Spots)
+
+model_svm <- train(A_min_lab ~ .,                        # CHANGE LABELS             
+               data = train_area, 
+               method = "svmLinear", 
+               na.action = na.omit, 
+               #preProcess = c("scale", "center"),
+               #family = quasipoisson(),
+               trControl = trainControl(method = "cv")
+               )
+
+
+
+model_svm_preds <- predict(model_svm, test_area, reshape = FALSE)
+model_svm_pred_fac <- as.factor(model_svm_preds) #this needs to be a factor
+
+# Visualizing and inerpreting performance
+print("SVM Results")
+# Making the confusion matrix
+caret::confusionMatrix(as.factor(test_labels), model_svm_pred_fac)
+
+varImp(model_svm)
+
+# And Making the Crosstable
+# CrossTable(x = as.factor(test_labels), y = model_svm_pred_fac, prop.chisq = FALSE)
+
+```
+
+# Linear Discriminant Analysis (LDA)
+
+Resourse: https://www.r-bloggers.com/2021/05/linear-discriminant-analysis-in-r/
+
+```{r}
+set.seed(123)
+
+model_lda <- train(A_min_lab ~ .,                           # CHANGE LABELS         
+               data = train_area, 
+               method = "pda", 
+               na.action = na.omit, 
+               #preProcess = c("scale", "center"),
+               #family = quasipoisson(),
+               trControl = trainControl(method = "cv")
+               )
+
+
+model_lda_preds <- predict(model_lda, test_area, reshape = FALSE)
+model_lda_pred_fac <- as.factor(model_lda_preds) #this needs to be a factor
+
+# Visualizing and inerpreting performance
+
+print("LDA Results")
+# Making the confusion matrix
+caret::confusionMatrix(as.factor(test_labels), model_lda_pred_fac)
+
+varImp(model_lda)
+
+# And Making the Crosstable
+# CrossTable(x = as.factor(test_labels), y = model_lda_pred_fac, prop.chisq = FALSE)
+
+```
+
+# Penalized Discriminant Analysis (PDA)
+
+Resourse: https://www.r-bloggers.com/2021/05/linear-discriminant-analysis-in-r/
+
+```{r}
+
+set.seed(123)
+
+model_pda <- train(A_min_lab ~ .,                               # CHANGE VARIABLE      
+               data = train_area, 
+               method = "PenalizedLDA",  
+               na.action = na.omit, 
+               #preProcess = c("scale", "center"),
+               metric = "Accuracy",
+               #family = quasipoisson(),
+               trControl = trainControl(method = "none")
+               )
+
+
+model_pda_preds <- predict(model_pda, test_area, reshape = FALSE)
+model_pda_pred_fac <- as.factor(model_pda_preds) #this needs to be a factor
+
+# Visualizing and inerpreting performance
+print("PDA Results")
+# Making the confusion matrix
+caret::confusionMatrix
+
+varImp(model_pda)
+
+# And Making the Crosstable
+# CrossTable(x = as.factor(test_labels), y = model_slda_pred_fac, prop.chisq = FALSE)
+
+```
+
+
+
+# Sparse Linear Discriminant Analysis (Sparse LDA)
+
+Resourse: https://www.r-bloggers.com/2021/05/linear-discriminant-analysis-in-r/
+
+```{r}
+set.seed(123)
+
+model_slda <- train(A_min_lab ~ .,                               # CHANGE VARIABLE      
+               data = train_area, 
+               method = "sparseLDA",  
+               na.action = na.omit, 
+               #preProcess = c("scale", "center"),
+               metric = "Accuracy",
+               #family = quasipoisson(),
+               trControl = trainControl(method = "none")
+               )
+
+
+model_slda_preds <- predict(model_slda, test_area, reshape = FALSE)
+model_slda_pred_fac <- as.factor(model_slda_preds) #this needs to be a factor
+
+# Visualizing and inerpreting performance
+print("Sparse LDA Results")
+# Making the confusion matrix
+caret::confusionMatrix(as.factor(test_labels), model_slda_pred_fac)
+
+varImp(model_slda)
+
+# And Making the Crosstable
+# CrossTable(x = as.factor(test_labels), y = model_slda_pred_fac, prop.chisq = FALSE)
+
+```
+
+
+# Testing Mutliple Models with Caret
+
+```{r}
+
+library(tidyverse) # data manipulation
+library(caret) # predictive modelling
+library(rpart.plot) # decision tree visualisation
+
+train_area$A_min_lab <- as.factor(train_area$A_min_lab)
+test_area$A_min_lab <- as.factor(test_area$A_min_lab)
+
+set.seed(123)
+
+# 10-folds
+fold_index <- createFolds(train_area$A_min_lab,
+                          # number of folds
+                          k = 17, 
+                          # return as list
+                          list = T, 
+                          # return numbers corresponding positions
+                          returnTrain = T)
+# Cross validation
+ctrl <- trainControl(method="cv", index = fold_index)
+
+train.control <- trainControl(method = "repeatedcv",
+                             number = 10,
+                             index = fold_index,
+                             #classProbs = TRUE,
+                             repeats = 10)
+
+
+# Option 2: Try all specified parameters
+m_knn <- train(form = A_min_lab~.,
+               data = train_area,
+               method = 'knn',
+               trControl = train.control, # Cross-validation
+               #tuneGrid = expand.grid(k = 1:20), 
+               tuneLength = 10)  #data.frame(k = seq(2, 20, 1))
+
+
+# plot(m_knn, main = "KNN 10-fold Cross-Validation" )
+# m_knn
+
+plot(m_knn)
+varImp(m_knn)
+
+
+pred_knn <- predict(m_knn, newdata = test_area)
+
+test_area$A_min_lab <- as.factor(test_area$A_min_lab)
+
+tbl_knn  <- confusionMatrix(pred_knn, test_area$A_min_lab)
+tbl_knn
+                            
+CrossTable(pred_knn, test_area$A_min_lab, prop.chisq = FALSE)
+
+```
+
+
+
+# CUT CODE - Removing Ions from the List
+- This list of ions was used to boost the performace of certain models, however it was NOT used for any publication results. 
+
+```{r}
+ ml_predict_int_area_norm <- ml_predict_int_area_norm %>% 
+  dplyr::select(-A_651.9, -A_230.9, A_335.7, -A_98, -A_110.1, 
+                -A_41, -A_79.1, -A_39, -A_147.1, -A_281.1, 
+                -A_69.1, -A_129.1, -A_203.1, -A_202.1, -A_189.1, 
+              #  -A_141.1, 
+                -A_153.1, 
+                -A_108.1, 
+                -A_86, 
+                -A_86, -A_84.1, -A_263.1, -A_226.1, -A_163.1,
+                -A_128.1, -A_73.1, -A_261.1, -A_546.4, 
+                -A_286.9, -A_174.9, -A_286.9, -A_342.8, -A_286.6, 
+              #  -A_67.1,
+                -A_85.1, 
+              #  -A_55.1, 
+                -A_272.1, -A_56.1, -A_302.1, -A_161, 
+                -A_346.7, -A_348.7, 
+              #  -A_122, # strong
+              #  -A_137, # strong
+                -A_157.1, 
+                -A_65.1, 
+                -A_107.1, 
+                -A_121.1, -A_102.9, -A_408.8, 
+                -A_158.9, 
+                -A_335.7, 
+                -A_119.1, 
+                -A_77.1, 
+              #  -A_111, 
+              #  -A_146, strong for RF
+              #  -A_228.1, 
+                -A_184.1, 
+                -A_51, 
+                -A_58.1, 
+                -A_57.1, 
+              #  -A_99, strong for CART
+                -A_114, 
+                -A_74, -A_178.1, -A_276.1, 
+                -A_300.1, -A_87, -A_38, -A_102.1, -A_118.1,
+                -A_165.1, -A_87, -A_43.1, 
+                -A_63.1, -A_123, -A_336.8, -A_176.1, -A_177.1, 
+              #  -A_117.1, 
+              #  -A_173.1, 
+              #  -A_139.1, # Hurt XGBoost, helped CART and RF
+              #  -A_158, # Excluding it hurt logitboost, good for everything else
+              #  -A_127.1, 
+                -A_344.8, -A_193.1, -A_115.1, -A_193.1, 
+                -A_71.1, -A_149.1, 
+              #  -A_134,  
+              #  -A_155.1, # bad for XGBoost, good for RF
+              #  -A_196.1, 
+              #  -A_145, 
+              #  -A_265.1, 
+              #  -A_105.1, 
+              #  -A_131.1, 
+              # -A_196.1,  # Good for RF, bad for everything else
+                -A_171.1, -A_81.1, -A_596.2)
+
+ncol(ml_predict_int_area_norm)
+
+```
+
