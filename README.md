@@ -1,7 +1,8 @@
 # ML-Correlation-of-SEM-and-ToF-SIMS-data-for-Organic-Biomarker-Analysis
 Code for the manuscript "Machine Learning Correlation of Electron Micrographs and ToF-SIMS  for the Analysis of Organic Biomarkers in Mudstone"
 
-# - General Descirptions and Notes on ToF-SIMS ML Code - 
+## General Descirptions and Notes on ToF-SIMS ML Code
+
 - This code performs supervised ML on ToF-SIMS data sets. There are multiple steps to data curation performed here. All ToF-SIMS data was integrated outside of R and the values for integration were imported for supervised ML. 
 -- Peak height and peak area data were recorded for each of the curated peaks listed in "Creating Dataframes" section of this code.  
 - min_lab labels were defined from via unsupervised ML on SEM-EDS datasets in the code folder "ML_sem_eds_unsupervised.Rmd"
