@@ -1,7 +1,7 @@
 # ML-Correlation-of-SEM-and-ToF-SIMS-data-for-Organic-Biomarker-Analysis
 Code for the manuscript "Machine Learning Correlation of Electron Micrographs and ToF-SIMS  for the Analysis of Organic Biomarkers in Mudstone"
 
-## General Descirptions and Notes on SEM-EDS and ToF-SIMS ML Code
+## General Descriptions and Notes on SEM-EDS and ToF-SIMS ML Code
 ### Unsupervised ML on SEM-EDS Data
 - The ML_sem_eds_unsupervised code is used for a statistical analysis on the compositional variability in the mudstone sample, with a specific interest on determining potential drivers of variability in the presence of both organic carbon and detectable organic biomarkers. Labels created using unsupervised ML performed on the SEM-EDS datasets are then applied to the ToF-SIMS datasets for supervised ML.
   - min_lab labels defined from via unsupervised ML on SEM-EDS datasets include: 
@@ -15,10 +15,20 @@ Code for the manuscript "Machine Learning Correlation of Electron Micrographs an
 
 - Personal progress for all analysis was tracked in a "Project Log" doc available upon request. 
 
-### Notes on Importing the Data
-For the ToF-SIMS data
+### Notes the Data
+Each data set is within the respective data folder
+- These data are pre-processed to some degree, but are largely representative of the raw data.
+SPecific notes on the SEM-EDS dataset
+- Spot, mineralogy, and location variables need to be factors
+- Spot 10 and spot 11 are the same location (improper naming in early analysis)
+- For this publication, spots were renamed for clarity. 
+_____Labels Key______
+Publication number: This code number
+Spot 1: Spot 15
+Spot 2: Spot 16
+Spot 3: Spot 9
+Spot 4: Spot 10
+
+Specifics notes on importing the ToF-SIMS data
 - The data is in the form of a "full" dataset of all of peak integration and peak height data.
-  - Data is located in the tof_sims_data folder
-  - This dataset is in long form
--  In the ML_tof_sims_supervised code
-  -  First each dataset is imported, then columns are selected, the min_lab column column is then appended, and all columns are then combine into two final documents (peak area and peak height datasets)
+  - Again, peak integration was performed in a separate program (OriginPro).
