@@ -11,7 +11,8 @@ Code for the manuscript "Machine Learning Correlation of Electron Micrographs an
 
 ### Importing the data
 
-- Here I create a "full" dataset of all of the integrated peaks-
+- The data is in the form of a "full" dataset of all of peak integration and peak height data.
   - Data is located in the tof_sims_data folder
   - This dataset is in long form
--  First each dataset is imported, then columns are selected, the min_lab column column is then appended, and all columns are then combine into two final documents (peak area and peak height datasets)
+-  In the ML_tof_sims_supervised code
+  -  First each dataset is imported, then columns are selected, the min_lab column column is then appended, and all columns are then combine into two final documents (peak area and peak height datasets)
