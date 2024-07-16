@@ -4,9 +4,9 @@ Code for the manuscript "Machine Learning Correlation of Electron Micrographs an
 ## General Descirptions and Notes on ToF-SIMS ML Code
 
 - The ML_tof_sims_supervised.RMD code performs supervised ML on ToF-SIMS data sets. There are multiple steps to data curation performed here. All ToF-SIMS peak integration was performed outside of R and values were imported for supervised ML. 
--- Peak height and peak area data were recorded for each of the curated peaks listed in "Creating Dataframes" section of this code.  
+  - Peak height and peak area data were recorded for each of the curated peaks listed in "Creating Dataframes" section of this code.  
 - min_lab labels were defined from via unsupervised ML on SEM-EDS datasets in the code folder "ML_sem_eds_unsupervised.Rmd"
--- In this doc, each min_lab has it's own corresponding data table in the home folder. 
+  - In this doc, each min_lab has it's own corresponding data table in the home folder. 
 - Personal progress was tracked the "Project Log" notepad doc. 
 
 ### Importing the data
