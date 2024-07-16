@@ -1,0 +1,3117 @@
+---
+title: "ML_sem_eds_unsupervised"
+author: "joeypasterski"
+date: "7/15/2024"
+output:
+  pdf_document: 
+    fig_caption: yes
+  word_document: default
+  html_document:
+    highlight: zenburn
+    theme: spacelab
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r loading libraries}
+library(tidyverse)
+library(dplyr)
+library(cluster)
+library(factoextra)
+library(FactoMineR)
+library(janitor)
+library(devtools)
+library(tidymodels)
+library(ggridges)
+library(caret)
+library(VGAM)
+
+```
+
+
+## Importing the data
+
+# Notes: 
+- Unread values to be "NA" in order to plot later
+- Spot, mineralogy, and location variables need to be factors
+- Spot 10 and spot 11 are the same location (impropoer naming in early analysis)
+
+# For this publication, spots were renamed for clarity. 
+
+_____Labels Key______
+Publication number: This code number
+Spot 1: Spot 15
+Spot 2: Spot 16
+Spot 3: Spot 9
+Spot 4: Spot 10 
+
+
+### There are two SEM-EDS datasets below
+- Dataset 1 and Dataset 2. These datasets were collected in equal ways and are only imported seperately because of naming conventions introduced early on in the analytical workflow. 
+
+# Importing and Combining Dataset 1
+
+```{r, eval = TRUE, echo = FALSE}
+#Spot 9
+spot9 <- read.csv("data/Spot9_Point_Measures.csv", stringsAsFactors = TRUE)
+spot9[is.na(spot9)] <- 0
+spot9$spot <- as.factor(spot9$spot)
+spot9$mineralogy <- as.factor(spot9$mineralogy)
+spot9$location <- as.factor(spot9$location)
+
+df <- read.csv("data/Spot9_Point_Measures.csv", stringsAsFactors = TRUE)
+df <- df[!is.na(df)]
+df <- replace(df, is.na(df), 0)
+
+#Spot 11
+spot11 <- read.csv("data/Spot11_Point_Measures.csv", stringsAsFactors = TRUE)
+spot11[is.na(spot11)] <- 0
+spot11$spot <- as.factor(spot11$spot)
+spot11$mineralogy <- as.factor(spot11$mineralogy)
+spot11$location <- as.factor(spot11$location)
+
+#Spot 15
+spot15 <- read.csv("data/Spot15_Point_Measures.csv", stringsAsFactors = TRUE)
+spot15[is.na(spot15)] <- 0
+spot15$spot <- as.factor(spot15$spot)
+spot15$mineralogy <- as.factor(spot15$mineralogy)
+spot15$location <- as.factor(spot15$location)
+spot15 <- spot15 %>%
+  filter(mineralogy != "pyr_seds")
+
+#Spot 16
+spot16 <- read.csv("data/Spot16_Point_Measures.csv", stringsAsFactors = TRUE)
+spot16[is.na(spot16)] <- 0
+spot16$spot <- as.factor(spot16$spot)
+spot16$mineralogy <- as.factor(spot16$mineralogy)
+spot16$location <- as.factor(spot16$location)
+```
+
+#### And getting the number of columns
+To double check my selection in the next section
+```{r, eval = TRUE, echo = FALSE}
+ncol(spot9)
+# ncol(spot11)
+ncol(spot15)
+ncol(spot16)
+```
+
+
+### Filtering data by Wt Percent and Concetration
+Picking the wt percent and other relevant columns
+I also need to keep the "Spectra" column in order to tie the point measurements to the metadata later
+
+```{r, eval = TRUE, echo = FALSE}
+#BY WT PERCENT
+spot9_wtper_tot <- spot9 %>%
+  dplyr::select(1, 2, 3, 4, 41:76)
+
+spot11_wtper_tot <- spot11 %>%
+  dplyr::select(1, 2, 3, 4, 39:72)
+
+spot15_wtper_tot <- spot15 %>%
+  dplyr::select(1, 2, 3, 4, 23:40)
+
+spot16_wtper_tot <- spot16 %>%
+  dplyr::select(1, 2, 3, 4, 23:40)
+
+```
+
+### Now combining the spots into two main datasets
+
+```{r, eval = TRUE, echo = FALSE}
+spot9_11 <- merge(spot9_wtper_tot, spot11_wtper_tot, all.x = TRUE, all.y = TRUE)
+spot15_16 <- merge(spot15_wtper_tot, spot16_wtper_tot, all.x = TRUE, all.y = TRUE)
+spots_all_wtper_1 <- merge(spot9_wtper_tot, spot15_16, all.x = TRUE, all.y = TRUE)
+spots_all_wtper_1[is.na(spots_all_wtper_1)] <- 0
+```
+
+
+
+### Importing and Combining Dataset 2
+
+```{r, eval = TRUE, echo = FALSE}
+#Spot 9
+spot9_2 <- read.csv("data/Spot9_2_Point_Measures.csv", stringsAsFactors = TRUE) 
+spot9_2[is.na(spot9_2)] <- 0
+spot9_2$spot <- as.factor(spot9_2$spot)
+spot9_2$mineralogy <- as.factor(spot9_2$mineralogy)
+spot9_2$location <- as.factor(spot9_2$location)
+
+#Spot 10
+spot10_2 <- read.csv("data/Spot10_2_Point_Measures.csv", stringsAsFactors = TRUE) 
+spot10_2[is.na(spot10_2)] <- 0
+spot10_2$spot <- as.factor(spot10_2$spot)
+spot10_2$mineralogy <- as.factor(spot10_2$mineralogy)
+spot10_2$location <- as.factor(spot10_2$location)
+
+#Spot 15
+spot15_2 <- read.csv("data/Spot15_2_Point_Measures.csv", stringsAsFactors = TRUE) 
+spot15_2[is.na(spot15_2)] <- 0
+spot15_2$spot <- as.factor(spot15_2$spot)
+spot15_2$mineralogy <- as.factor(spot15_2$mineralogy)
+spot15_2$location <- as.factor(spot15_2$location)
+spot15_2 <- spot15_2 %>%
+  filter(mineralogy != "pyr_seds")
+
+#Spot 16
+spot16_2 <- read.csv("data/Spot16_2_Point_Measures.csv", stringsAsFactors = TRUE) 
+spot16_2[is.na(spot16_2)] <- 0
+spot16_2$spot <- as.factor(spot16_2$spot)
+spot16_2$mineralogy <- as.factor(spot16_2$mineralogy)
+spot16_2$location <- as.factor(spot16_2$location)
+
+```
+
+
+#### And getting the number of columns 
+- To double check my selection in the next section
+
+```{r, eval = TRUE, echo = FALSE}
+ncol(spot9_2)
+ncol(spot10_2)
+ncol(spot15_2)
+ncol(spot16_2)
+```
+
+
+### Next, filtering data by Wt Percent
+- Selecting wt percent and other relevant columns
+- I also kept the "Spectra" column in order to tie the point measurements to the metadata later
+
+```{r, eval = TRUE, echo = FALSE}
+#BY WT PERCENT
+spot9_2_wtper_tot <- spot9_2 %>% 
+  dplyr::select(1, 2, 3, 4, 26:46) 
+
+spot10_2_wtper_tot <- spot10_2 %>% 
+  dplyr::select(1, 2, 3, 4, 26:46) 
+
+spot15_2_wtper_tot <- spot15_2 %>% 
+  dplyr::select(1, 2, 3, 4, 28:49) 
+
+spot16_2_wtper_tot <- spot16_2 %>% 
+  dplyr::select(1, 2, 3, 4, 25:43) 
+
+```
+
+### Now combining the spots into two main datasets 
+
+```{r, eval = TRUE, echo = FALSE}
+spot9_10_2 <- merge(spot9_2_wtper_tot, spot10_2_wtper_tot, all.x = TRUE, all.y = TRUE)
+spot15_16_2 <- merge(spot15_2_wtper_tot, spot16_2_wtper_tot, all.x = TRUE, all.y = TRUE)
+spots_all_wtper_2 <- merge(spot9_10_2, spot15_16_2, all.x = TRUE, all.y = TRUE)
+spots_all_wtper_2[is.na(spots_all_wtper_2)] <- 0
+
+#And making "location" indicate that this was the second SEM analysis
+spots_all_wtper_2$location <- "analysis_2"
+spots_all_wtper_2$location <- as.factor(spots_all_wtper_2$location)
+
+```
+
+
+### Importing the data from Regional SEM Analysis
+- These are referred to as "Labelled Areas" in the publicaiton
+
+```{r, eval = TRUE, echo = FALSE}
+#Spot 9
+spot9_reg <- read.csv("data/Spot9_Regional_Measures.csv", stringsAsFactors = TRUE) 
+spot9_reg[is.na(spot9_reg)] <- 0
+spot9_reg$spot <- as.factor(spot9_reg$spot)
+spot9_reg$mineralogy <- as.factor(spot9_reg$mineralogy)
+spot9_reg$location <- as.factor(spot9_reg$location)
+
+#Spot 10
+spot10_reg <- read.csv("data/Spot10_Regional_Measures.csv", stringsAsFactors = TRUE) 
+spot10_reg[is.na(spot10_reg)] <- 0
+spot10_reg$spot <- as.factor(spot10_reg$spot)
+spot10_reg$mineralogy <- as.factor(spot10_reg$mineralogy)
+spot10_reg$location <- as.factor(spot10_reg$location)
+
+#Spot 15
+spot15_reg <- read.csv("data/Spot15_Regional_Measures.csv", stringsAsFactors = TRUE) 
+spot15_reg[is.na(spot15_reg)] <- 0
+spot15_reg$spot <- as.factor(spot15_reg$spot)
+spot15_reg$mineralogy <- as.factor(spot15_reg$mineralogy)
+spot15_reg$location <- as.factor(spot15_reg$location)
+spot15_reg <- spot15_reg %>%
+  filter(mineralogy != "pyr_seds")
+
+#Spot 16
+spot16_reg <- read.csv("data/Spot16_Regional_Measures.csv", stringsAsFactors = TRUE) 
+spot16_reg[is.na(spot16_reg)] <- 0
+spot16_reg$spot <- as.factor(spot16_reg$spot)
+spot16_reg$mineralogy <- as.factor(spot16_reg$mineralogy)
+spot16_reg$location <- as.factor(spot16_reg$location)
+
+```
+
+#### And getting the number of columns 
+To double check my selection in the next section
+```{r, eval = TRUE, echo = FALSE}
+ncol(spot9_reg)
+ncol(spot10_reg)
+ncol(spot15_reg)
+ncol(spot16_reg)
+```
+
+### Filtering data by Wt Percent
+Picking the wt percent and other relevant columns
+I also need to keep the "Spectra" column in order to tie the point measurements to the metadata later
+
+```{r, eval = TRUE, echo = FALSE}
+#BY WT PERCENT
+spot9_reg_wtper_tot <- spot9_reg %>% 
+  filter(mineralogy != "fiber") %>% 
+  dplyr::select(1, 2, 3, 4, 26:45) 
+
+spot10_reg_wtper_tot <- spot10_reg %>% 
+  dplyr::select(1, 2, 3, 4, 28:50) 
+
+spot15_reg_wtper_tot <- spot15_reg %>% 
+  dplyr::select(1, 2, 3, 4, 26:46) 
+
+spot16_reg_wtper_tot <- spot16_reg %>% 
+  dplyr::select(1, 2, 3, 4, 29:50) 
+
+```
+
+### Now combining the spots into two main datasets 
+
+```{r, eval = TRUE, echo = FALSE}
+spot9_10_reg <- merge(spot9_reg_wtper_tot, spot10_reg_wtper_tot, all.x = TRUE, all.y = TRUE)
+spot15_16_reg <- merge(spot15_reg_wtper_tot, spot16_reg_wtper_tot, all.x = TRUE, all.y = TRUE)
+spots_all_wtper_reg <- merge(spot9_10_reg, spot15_16_reg, all.x = TRUE, all.y = TRUE)
+spots_all_wtper_reg[is.na(spots_all_wtper_reg)] <- 0
+
+```
+
+
+### Now merging all of the datasets
+
+#NOTE GOING FORWARD: I filtered out the regional measurements after I removed outliers
+- This should make the plots later make more sense. 
+-- If you want to plot the point and reginoal measuments together, merge the datasets first
+
+```{r, eval = TRUE, echo = FALSE}
+spots_all_wtper_point <- merge(spots_all_wtper_1, spots_all_wtper_2, all.x = TRUE, all.y = TRUE)
+spots_all_wtper <- merge(spots_all_wtper_point, spots_all_wtper_reg, all.x = TRUE, all.y = TRUE)
+spots_all_wtper[is.na(spots_all_wtper)] <- 0
+
+```
+
+
+#### And assiging Factor Levels
+
+```{r, eval = TRUE}
+spots_all_wtper$mineralogy <- factor(spots_all_wtper$mineralogy, levels = c("mz84_seds", "dark_seds", "med_seds", "light_seds", "phos_seds", "epoxy", "co3_seds", "pyr_seds", "rock"))
+
+spots_all_wtper$spot <- factor(spots_all_wtper$spot, levels = c("9", "10", "15", "16"))
+
+unique(spots_all_wtper$mineralogy)
+```
+
+### Making new designations for regions based on the data
+- The designations assigned below were the result of iterative ploting in both PCA space, as well as cluster analysis, and linear modeling. 
+
+The final designations were then appended to the dataframe as a new column called "min_lab": 
+
+- Organic-poor: org_0-20
+-- < 20 wt.% C
+
+- Organic-rich: org_0-40
+-- 20-40 wt.% C
+
+- Organic-richer: org_40-60
+-- 40-60 wt.% C
+
+- Organic-richest: org_60_100
+-- > 60 wt.% C
+
+- Epoxy: epoxy
+-- > 21 wt.% Ag
+
+- Phosphate regions: phos
+-- > 5 wt.% P
+
+- Sulfur-ruch regions: S_rich
+-- > 9 wt.% S
+
+- Calcium-rich regions: Ca_rich
+-- > 5 wt.% Ca
+
+
+
+In addition, one column designates that the sampled area is either from an mz_84 region that was observed to contain biomarkers in ToF-SIMS spectra region or not (y_84 = biomarkers regions, n_84 = no biomarkers regions)
+- The actual presence of detectable biomarkers was double-checked in the ToF-SIMS spectra for supervised ML 
+
+NOTE: I have to break this code into 4 chunks: 
+
+1. Making columns and levels for spots_all_wtper
+
+2. And removing outliers in the data
+
+3. Making spots_all_wtper_mean dataset
+
+4. Making columns for spots_all_wtper_mean
+
+
+```{r}
+#Making test histograms
+
+hist(spots_all_wtper$C_wtper, breaks = 100)
+
+```
+
+
+#### 1.a. Making all designation for spots_all_wtper
+
+```{r, eval = TRUE}
+
+#First, I have to make an index ID column so I can recombine the datasets later
+spots_all_wtper$row_index <- 1:nrow(spots_all_wtper)
+
+#Next, I have to make the min_lab column to populate during the for loop
+
+spots_all_wtper$min_lab <- 0
+
+#Labelling order here matters for classification later.  
+
+
+spots_all_wtper$min_lab[spots_all_wtper$C_wtper < 20] <- "org_0_20"
+#spots_all_wtper$min_lab[spots_all_wtper$Fe_wtper > 5] <- "fe_rich"
+spots_all_wtper$min_lab[spots_all_wtper$C_wtper > 20] <- "org_20_40"
+spots_all_wtper$min_lab[spots_all_wtper$C_wtper > 40] <- "org_40_60"
+spots_all_wtper$min_lab[spots_all_wtper$C_wtper > 60] <- "org_60_100"
+
+spots_all_wtper$min_lab[spots_all_wtper$S_wtper > 9] <- "S_rich"
+
+
+spots_all_wtper$min_lab[spots_all_wtper$Ca_wtper > 5] <- "Ca_rich"
+
+#Ag and Phos simply
+
+spots_all_wtper$min_lab[spots_all_wtper$Ag_wtper > 21] <- "epoxy"
+spots_all_wtper$min_lab[spots_all_wtper$P_wtper > 5] <- "phos"
+
+```
+
+#### 1.b Assigning the y_84 and steranes designations for the Regional and Point datasets 
+
+```{r}
+#Now creating a column to record whether regions are or are not mz_84 regions for all and mean graphs
+spots_all_wtper$mz_84 <- 0
+spots_all_wtper$mz_84 <- if_else(spots_all_wtper$mineralogy == "mz84_seds", "y_84", "n_84")
+spots_all_wtper$mz_84 <- factor(spots_all_wtper$mz_84, levels = c("y_84", "n_84"))
+
+
+spots_all_wtper %>% 
+  filter(spot == "15" | spot == "16") %>% 
+  mutate(steranes =
+    if_else(
+      mineralogy == "mz84_seds", "WHWHYWYY", "n_sters")
+  )
+
+spots_all_wtper$steranes <- if_else(spots_all_wtper$spot != "9" & spots_all_wtper$spot != "10" & spots_all_wtper$mineralogy == "mz84_seds", "y_sters", "n_sters")
+
+```
+
+# Writing the SEM-EDS dataset as a csv
+```{r}
+write.csv(spots_all_wtper, file = "sem_eds_dataset_full.csv")
+
+```
+
+
+
+
+#### 1.c Assining factor levels to the entire dataset
+```{r}
+spots_all_wtper$min_lab <- factor(spots_all_wtper$min_lab, levels = c("org_60_100", "org_40_60", "org_20_40", "org_0_20", "S_rich", "Ca_rich", "phos", "epoxy", "rock"))
+spots_all_wtper$mz_84 <- factor(spots_all_wtper$mz_84, levels = c("y_84", "n_84"))
+spots_all_wtper$steranes <- factor(spots_all_wtper$steranes, levels = c("y_sters", "n_sters"))
+
+spots_all_wtper_full <- spots_all_wtper
+
+spots_point <- spots_all_wtper %>% 
+  filter(location != "regional" & location != "regional_2")
+
+spots_reg <- spots_all_wtper %>% 
+  filter(location == "regional" | location == "regional_2")
+
+```
+
+
+#### 2. Removing Outliers in the Total Dataset
+
+Recombining the data has to be done in two steps: 
+1. Remove the outliers from each dataset using only elements relevant to the min_lab
+2. Recombine the datasets
+
+Now I will remove the outliers. 
+
+I removed all of the outliers by composition. 
+- The outliers in a C-rich region will be different than the outliers in a Ca-rich region.
+
+- I kept only removed data from outside of the 90% quartile
+- - There was so much variability that otherwise the data is hard to interpret
+- - - But notably, it still says the same thing
+
+
+```{r, eval = TRUE}
+#Defining probabilities for the quantile() function
+my_quant_upper <- 0.90
+my_quant_lower <- 0.1
+
+#Creating the dataset for the forloop
+#Org C 0_20
+df_org_0_20 <- spots_all_wtper %>%
+  filter(location != "regional" | location != "regional_2") %>% 
+  dplyr::select(1:5, 48:50) %>%
+  filter(min_lab == "org_0_20")
+
+    #Running the for loop
+    #This places an NA for any values outside of the IQR
+    for(i in 1:ncol(df_org_0_20))
+        {
+        if (class(df_org_0_20[, i]) == "numeric"){
+          df_org_0_20[, i][df_org_0_20[,i] > quantile(df_org_0_20[,i], probs = my_quant_upper, na.rm = TRUE)] = NA
+        }
+      }
+      
+      for(i in 1:ncol(df_org_0_20))
+        {
+        if (class(df_org_0_20[, i]) == "numeric"){
+          df_org_0_20[, i][df_org_0_20[,i] < quantile(df_org_0_20[,i], probs = my_quant_lower, na.rm = TRUE)] = NA
+        }}
+
+#Org C 20_40
+df_org_20_40 <- spots_all_wtper %>%
+  filter(location != "regional" | location != "regional_2") %>% 
+  dplyr::select(1:5, 48:50) %>%
+  filter(min_lab == "org_20_40")
+
+    #Running the for loop
+    #This places an NA for any values outside of the IQR
+    for(i in 1:ncol(df_org_20_40))
+        {
+        if (class(df_org_20_40[, i]) == "numeric"){
+          df_org_20_40[, i][df_org_20_40[,i] > quantile(df_org_20_40[,i], probs = my_quant_upper, na.rm = TRUE)] = NA
+        }
+      }
+      
+      for(i in 1:ncol(df_org_20_40))
+        {
+        if (class(df_org_20_40[, i]) == "numeric"){
+          df_org_20_40[, i][df_org_20_40[,i] < quantile(df_org_20_40[,i], probs = my_quant_lower, na.rm = TRUE)] = NA
+        }}
+
+#Org C 40_60
+df_org_40_60 <- spots_all_wtper %>%
+  filter(location != "regional" | location != "regional_2") %>% 
+  dplyr::select(1:5, 48:50) %>%
+  filter(min_lab == "org_40_60")
+
+    #Running the for loop
+    #This places an NA for any values outside of the IQR
+    for(i in 1:ncol(df_org_40_60))
+        {
+        if (class(df_org_40_60[, i]) == "numeric"){
+          df_org_40_60[, i][df_org_40_60[,i] > quantile(df_org_40_60[,i], probs = my_quant_upper, na.rm = TRUE)] = NA
+        }
+      }
+      
+      for(i in 1:ncol(df_org_40_60))
+        {
+        if (class(df_org_40_60[, i]) == "numeric"){
+          df_org_40_60[, i][df_org_40_60[,i] < quantile(df_org_40_60[,i], probs = my_quant_lower, na.rm = TRUE)] = NA
+        }}
+
+#Org C 60_100
+df_org_60_100 <- spots_all_wtper %>%
+  filter(location != "regional" | location != "regional_2") %>% 
+  dplyr::select(1:5, 48:50) %>%
+  filter(min_lab == "org_60_100")
+
+    #Running the for loop
+    #This places an NA for any values outside of the IQR
+    for(i in 1:ncol(df_org_60_100))
+        {
+        if (class(df_org_60_100[, i]) == "numeric"){
+          df_org_60_100[, i][df_org_60_100[,i] > quantile(df_org_60_100[,i], probs = my_quant_upper, na.rm = TRUE)] = NA
+        }
+      }
+      
+      for(i in 1:ncol(df_org_60_100))
+        {
+        if (class(df_org_60_100[, i]) == "numeric"){
+          df_org_60_100[, i][df_org_60_100[,i] < quantile(df_org_60_100[,i], probs = my_quant_lower, na.rm = TRUE)] = NA
+        }}
+
+#Creating the dataset for the forloop
+df_phos <- spots_all_wtper %>% 
+  filter(location != "regional" | location != "regional_2") %>% 
+  dplyr::select(1:4, 18, 48:50) %>% #only filtering using P
+  filter(min_lab == "phos")
+
+    #Running the for loop 
+    #This places an NA for any values outside of the IQR
+    for(i in 1:ncol(df_phos)) 
+      {
+      if (class(df_phos[, i]) == "numeric"){
+        df_phos[, i][df_phos[,i] > quantile(df_phos[,i], probs = my_quant_upper, na.rm = TRUE)] = NA
+      }
+    }
+    
+    for(i in 1:ncol(df_phos)) 
+      {
+      if (class(df_phos[, i]) == "numeric"){
+        df_phos[, i][df_phos[,i] < quantile(df_phos[,i], probs = my_quant_lower, na.rm = TRUE)] = NA
+      }
+    }
+
+#Creating the dataset for the forloop
+df_phos <- spots_all_wtper %>% 
+  filter(location != "regional" | location != "regional_2") %>% 
+  dplyr::select(1:4, 18, 48:50) %>% #only filtering using P
+  filter(min_lab == "phos")
+
+    #Running the for loop 
+    #This places an NA for any values outside of the IQR
+    for(i in 1:ncol(df_phos)) 
+      {
+      if (class(df_phos[, i]) == "numeric"){
+        df_phos[, i][df_phos[,i] > quantile(df_phos[,i], probs = my_quant_upper, na.rm = TRUE)] = NA
+      }
+    }
+    
+    for(i in 1:ncol(df_phos)) 
+      {
+      if (class(df_phos[, i]) == "numeric"){
+        df_phos[, i][df_phos[,i] < quantile(df_phos[,i], probs = my_quant_lower, na.rm = TRUE)] = NA
+      }
+    }
+
+#Creating the dataset for the forloop
+df_phos <- spots_all_wtper %>% 
+  filter(location != "regional" | location != "regional_2") %>% 
+  dplyr::select(1:4, 18, 48:50) %>% #only filtering using P
+  filter(min_lab == "phos")
+
+    #Running the for loop 
+    #This places an NA for any values outside of the IQR
+    for(i in 1:ncol(df_phos)) 
+      {
+      if (class(df_phos[, i]) == "numeric"){
+        df_phos[, i][df_phos[,i] > quantile(df_phos[,i], probs = my_quant_upper, na.rm = TRUE)] = NA
+      }
+    }
+    
+    for(i in 1:ncol(df_phos)) 
+      {
+      if (class(df_phos[, i]) == "numeric"){
+        df_phos[, i][df_phos[,i] < quantile(df_phos[,i], probs = my_quant_lower, na.rm = TRUE)] = NA
+      }
+    }
+
+
+#Creating the dataset for the forloop
+df_phos <- spots_all_wtper %>% 
+  filter(location != "regional" | location != "regional_2") %>% 
+  dplyr::select(1:4, 18, 48:50) %>% #only filtering using P
+  filter(min_lab == "phos")
+
+    #Running the for loop 
+    #This places an NA for any values outside of the IQR
+    for(i in 1:ncol(df_phos)) 
+      {
+      if (class(df_phos[, i]) == "numeric"){
+        df_phos[, i][df_phos[,i] > quantile(df_phos[,i], probs = my_quant_upper, na.rm = TRUE)] = NA
+      }
+    }
+    
+    for(i in 1:ncol(df_phos)) 
+      {
+      if (class(df_phos[, i]) == "numeric"){
+        df_phos[, i][df_phos[,i] < quantile(df_phos[,i], probs = my_quant_lower, na.rm = TRUE)] = NA
+      }
+    }
+
+#Creating the dataset for the forloop
+df_epoxy <- spots_all_wtper %>% 
+  filter(location != "regional" | location != "regional_2") %>% 
+  dplyr::select(1:4, 11, 48:50) %>% #Filtering to only Ag
+  filter(min_lab == "epoxy")
+    
+    #Running the for loop 
+    #This places an NA for any values outside of the IQR
+    for(i in 1:ncol(df_epoxy)) 
+      {
+      if (class(df_epoxy[, i]) == "numeric"){
+        df_epoxy[, i][df_epoxy[,i] > quantile(df_epoxy[,i], probs = my_quant_upper, na.rm = TRUE)] = NA
+      }
+    }
+    
+    for(i in 1:ncol(df_epoxy)) 
+      {
+      if (class(df_epoxy[, i]) == "numeric"){
+        df_epoxy[, i][df_epoxy[,i] < quantile(df_epoxy[,i], probs = my_quant_lower, na.rm = TRUE)] = NA
+      }
+    }
+
+# Creating the dataset for the forloop
+df_S <- spots_all_wtper %>%
+  filter(location != "regional" | location != "regional_2") %>% 
+  dplyr::select(1:4, 9, 48:50) %>%
+  filter(min_lab == "S_rich") #Filtering to only S
+
+    # #Running the for loop
+    # #This places an NA for any values outside of the IQR
+    for(i in 1:ncol(df_S))
+      {
+      if (class(df_S[, i]) == "numeric"){
+        df_S[, i][df_S[,i] > quantile(df_S[,i], probs = my_quant_upper, na.rm = TRUE)] = NA
+      }
+    }
+    
+    for(i in 1:ncol(df_S))
+      {
+      if (class(df_S[, i]) == "numeric"){
+        df_S[, i][df_S[,i] < quantile(df_S[,i], probs = my_quant_lower, na.rm = TRUE)] = NA
+      }
+    }
+
+#Creating the dataset for the forloop
+df_Ca <- spots_all_wtper %>%
+  filter(location != "regional" | location != "regional_2") %>% 
+  dplyr::select(1:4, 13, 48:50) %>% #only filtering using Ca
+  filter(min_lab == "Ca_rich")
+
+    #Running the for loop
+    #This places an NA for any values outside of the IQR
+    for(i in 1:ncol(df_Ca))
+      {
+      if (class(df_Ca[, i]) == "numeric"){
+        df_Ca[, i][df_Ca[,i] > quantile(df_Ca[,i], probs = my_quant_upper, na.rm = TRUE)] = NA
+      }
+    }
+    
+    for(i in 1:ncol(df_Ca))
+      {
+      if (class(df_Ca[, i]) == "numeric"){
+        df_Ca[, i][df_Ca[,i] < quantile(df_Ca[,i], probs = my_quant_lower, na.rm = TRUE)] = NA
+      }
+    }
+
+# #TEMPLATE: Creating the dataset for the forloop
+# df_XXXX <- spots_all_wtper %>%
+#   dplyr::select(1:4, XXXX 47:50) %>%
+#   filter(min_lab == "XXXX")
+# 
+# #Running the for loop
+# #This places an NA for any values outside of the IQR
+# for(i in 1:ncol(XXXX))
+#   {
+#   if (class(XXXX[, i]) == "numeric"){
+#     XXXX[, i][XXXX[,i] > quantile(XXXX[,i], probs = my_quant_upper, na.rm = TRUE)] = NA
+#   }
+# }
+# 
+# for(i in 1:ncol(XXXX))
+#   {
+#   if (class(XXXX[, i]) == "numeric"){
+#     XXXX[, i][XXXX[,i] < quantile(XXXX[,i], probs = my_quant_lower, na.rm = TRUE)] = NA
+#   }
+# }
+
+```
+
+##### Now merging the dataframes
+
+When removing outliers I made 5 new dataframes with NA's for any observation with an outlier value: 
+- df_org, df_org_40_60, df_org_0_20, df_phos, and df_epoxy
+- I did not remove outliers from the regional measurements
+-- Labelled below as df_regional
+
+I did not re-incorperate the regional measurements here.
+- If I want to re-incorperate them later, I'll merge the dataframes and then plot.
+- Instead, I'm going to make a seperate dataset called spots_all_wtper_regional
+-- Then I can pull data from that
+
+
+
+```{r, eval = TRUE}
+
+#Keeping Complete Cases for the Dataframes (labelled as _cc)
+
+#org data
+df_org_0_20_cc <- df_org_0_20[complete.cases(df_org_0_20), ]
+df_org_20_40_cc <- df_org_20_40[complete.cases(df_org_20_40), ]
+df_org_40_60_cc <- df_org_40_60[complete.cases(df_org_40_60), ]
+df_org_60_100_cc <- df_org_60_100[complete.cases(df_org_60_100), ]
+
+
+#inorg data
+df_phos_cc <- df_phos[complete.cases(df_phos), ]
+df_epoxy_cc <- df_epoxy[complete.cases(df_epoxy), ]
+df_S_cc <- df_S[complete.cases(df_S), ]
+df_Ca_cc <- df_Ca[complete.cases(df_Ca), ]
+
+
+# Merging the dataframes with spots_all_wtper 
+## Note that adding the row_index column in the earlier code gives dplyR a unique values to merge by
+### You don't need to specify anything, it knows
+
+df_org_0_20_2 <- merge(df_org_0_20_cc, spots_all_wtper, all.x = TRUE, all.y = FALSE)
+df_org_20_40_2 <- merge(df_org_20_40_cc, spots_all_wtper, all.x = TRUE, all.y = FALSE)
+df_org_40_60_2 <- merge(df_org_40_60_cc, spots_all_wtper, all.x = TRUE, all.y = FALSE)
+df_org_60_100_2 <- merge(df_org_60_100_cc, spots_all_wtper, all.x = TRUE, all.y = FALSE)
+
+df_org_1 <- merge(df_org_0_20_2, df_org_20_40_2, all = TRUE)
+df_org_2 <- merge(df_org_1, df_org_40_60_2, all = TRUE)
+df_org_all <- merge(df_org_2, df_org_60_100_2, all = TRUE)
+
+
+df_phos_2 <- merge(df_phos_cc, spots_all_wtper, all.x = TRUE, all.y = FALSE)
+df_epoxy_2 <- merge(df_epoxy_cc, spots_all_wtper, all.x = TRUE, all.y = FALSE)
+df_S_2 <- merge(df_S_cc, spots_all_wtper, all.x = TRUE, all.y = FALSE)
+df_Ca_2 <- merge(df_Ca_cc, spots_all_wtper, all.x = TRUE, all.y = FALSE)
+
+df_inorg_1 <- merge(df_phos_2, df_epoxy_2, all = TRUE)
+df_inorg_2 <- merge(df_inorg_1, df_Ca_2, all = TRUE)
+df_inorg_all <- merge(df_inorg_2, df_S_2, all = TRUE)
+
+
+# Finally merging all of the dataframes together and checking dimensions
+df_reduced <- merge(df_org_all, df_inorg_all, all = TRUE)
+
+dim(spots_all_wtper)
+dim(df_reduced)
+
+```
+
+## -- CAUTION -- 
+
+### NOW OVERWRITING spots_all_wtper! 
+
+
+This is the final combine. 
+- It will also output csv files of the datasets for documentation. 
+
+```{r, eval = TRUE}
+#Renaming the columns to extract and select next
+
+df_reduced_reordered <- df_reduced %>% 
+  dplyr::select(spot, location, spectra, min_lab, mz_84, steranes, mineralogy, row_index, Ag_wtper, Al_wtper, C_wtper, Ca_wtper, Fe_wtper, O_wtper, P_wtper, S_wtper, Si_wtper)
+
+#Making the full elemental list for ToF-SIMS Spectral Interpretation
+# NOTE: All Elements without more than three measurements greater than 0.1 wt% were removed
+### The 0.1 wt% level follows the Bremsstrahlung Raditaion levels
+#### More than 3 elements follows my own logis (we're looking for sample wide trends)
+df_reduced_reordered_full <- df_reduced %>% 
+  dplyr::select(spot, spot, location, spectra, min_lab, mz_84, steranes, mineralogy, row_index, Ag_wtper, Al_wtper, C_wtper, Ca_wtper, Fe_wtper, O_wtper, P_wtper, S_wtper, Si_wtper, Mg_wtper, Zn_wtper, Na_wtper, K_wtper, Ti_wtper, In_wtper, Zr_wtper, Cl_wtper, F_wtper, Mn_wtper, Co_wtper,	Ni_wtper,	W_wtper,	U_wtper, Y_wtper)
+
+# Removed ions: Ar_wtper, Ta_wtper, Te_wtper, Au_wtper, Th_wtper, Ba_wtper, Cd_wtper,	Cr_wtper, Mo_wtper,	La_wtper,	Nd_wtper,	Yb_wtper,	Br_wtper,	Ir_wtper,	Sr_wtper,	Pr_wtper,	N_wtper,	I_wtper
+
+spots_all_wtper_regional <- spots_all_wtper %>% 
+  dplyr::select(spot, location, spectra, min_lab, mz_84, steranes, mineralogy, row_index, Ag_wtper, Al_wtper, C_wtper, Ca_wtper, Fe_wtper, O_wtper, P_wtper, S_wtper, Si_wtper, Ti_wtper, K_wtper) %>% 
+  filter(location == "regional" | location == "regional_2")
+
+spots_all_wtper_full <- spots_all_wtper_full %>% 
+  dplyr::select(spot, location, spectra, min_lab, mz_84, steranes, mineralogy, row_index, Ag_wtper, Al_wtper, C_wtper, Ca_wtper, Fe_wtper, O_wtper, P_wtper, S_wtper, Si_wtper) %>% 
+  filter(location != "regional" | location != "regional_2")
+
+df_reduced_reordered <- df_reduced_reordered %>% 
+  mutate(row_id = row_number())
+df_reduced_reordered$row_id <- as.factor(df_reduced_reordered$row_id)
+
+spots_all_wtper <- df_reduced_reordered %>% 
+  filter(location != "regional" & location != "regional_2")
+
+dim(spots_all_wtper)
+
+write_csv(spots_all_wtper, "spots_all_wtper.csv")
+write_csv(spots_all_wtper_full, "spots_all_wtper_full.csv")
+write_csv(spots_all_wtper_regional, "spots_all_wtper_regional.csv")
+write_csv(df_reduced_reordered_full, "sem_eds_dataset_full.csv")
+```
+
+
+
+
+## PCA Analysis
+
+This code below runs PCA analysis. 
+- Note that THESE LOCATION NUMBERS ARE NOT CORRELATED TO MY DATA. THESE ARE ASSIGNED. With this, location has been entirely removed from this analysis. Because I skipped some locations, I will have to use the excel file to figure out what numbers I skipped in order to know which PCA locations correlate to which sampled locations. 
+
+
+### Making the different datasets
+
+Because epoxy (eg silver) and the apatite (P, Ca) play a huge role in the spatial variation of the dataset, I've created several datasets that do not contain epoxy. Note that spots 9 and 10 do not have phos_seds
+
+I created these datasets via filter. Note that I've kept the datasets in wide format because this format works well for cluster analysis. If I need to change it to long format I will note that later. 
+
+#### Packages
+
+fviz_xplot = factoextra
+
+
+
+```{r, eval = TRUE}
+#1.a Total Dataset with Epoxy and Phos 
+#spots_all_wtper
+#spots_all_wtper_mean
+  
+#1.b Total Dataset with no Epoxy and with Phos
+spots_all_wtper_nE <- spots_all_wtper %>% 
+  filter(min_lab != "epoxy")
+
+#1.c Total Dataset with no Epoxy and no Phos
+spots_all_wtper_nE_nP <- spots_all_wtper %>%
+  filter(min_lab != "epoxy",  min_lab != "phos") 
+
+#1.d Total Dataset with no Epoxy and no Phos
+spots_all_wtper_nE_nP_nFe <- spots_all_wtper %>%
+  filter(min_lab != "epoxy",  min_lab != "phos", min_lab != "fe_rich") 
+
+spots_all_wtper_nE_nP_nInorg <- spots_all_wtper %>%
+  filter(min_lab != "epoxy",  min_lab != "phos", min_lab != "fe_rich", min_lab != "Ca_rich")
+
+#2 Only org_rich and org_poor regions
+spots_all_org_rich <- spots_all_wtper %>% 
+  filter(min_lab == "org_40_60")
+
+spots_all_org_richest <- spots_all_wtper %>% 
+  filter(min_lab == "org_60_100")
+
+spots_all_org_poor <- spots_all_wtper %>% 
+  filter(min_lab == "org_0_20")
+
+```
+
+
+
+
+```{r, eval = TRUE}
+
+#Make PCA datasets
+
+#TOTAL Dataset
+spots_wtper_PCA <- spots_all_wtper[ , 9:17] %>% 
+  PCA(ncp = 9, axes = c(1,2), graph = FALSE)  
+
+#Now removing epoxy
+spots_wtper_PCA_nE <- spots_all_wtper_nE[ , 9:17] %>% 
+  PCA(ncp = 5, axes = c(1,2), graph = FALSE)
+
+#Now removing epoxy as phos
+spots_wtper_PCA_nE_nP <- spots_all_wtper_nE_nP[ , 9:17] %>% 
+  PCA(ncp = 5, axes = c(1,2), graph = FALSE)
+
+#Now removing epoxy, phos and Fe-rich regions 
+spots_wtper_PCA_nE_nP_nFe <- spots_all_wtper_nE_nP_nFe[ , 9:17] %>% 
+  PCA(ncp = 5, axes = c(1,2), graph = FALSE)
+
+#Now removing all Inorg regions (Only org remains)
+spots_wtper_PCA_nE_nP_nInorg <- spots_all_wtper_nE_nP_nInorg[ , 9:17] %>% 
+  PCA(ncp = 5, axes = c(1,2), graph = FALSE)
+
+
+```
+
+
+# The Featured PCA Plot for Publication
+
+### Comments on the PCA plot
+
+- Using the min_lab designations created earlier in this doc, I get a really good separation between the different regions. I used this to feed back into the image files to figure out where these locations are and re-make my regions to reflect actual composition (i.e. to make the labelled compositional areas)
+
+```{r - Making the Biplots for the Total Dataset, eval = TRUE}
+
+#FOR Total DATASET
+#Step 1, getting eigen values
+eig.val4 <- get_eigenvalue(spots_wtper_PCA)
+eig.val4
+
+PCAvardata4 <- get_pca_var(spots_wtper_PCA)
+print(PCAvardata4$coord)
+
+#Step 2, make the biplot
+fviz_pca_biplot(spots_wtper_PCA, axes = c(1,2),
+  geom.ind = c("point"), pointshape = 20, alpha.ind = 0.6,
+  habillage = spots_all_wtper$min_lab,
+  repel = TRUE, palette = "Set1",
+  col.var = "Black", alpha.var = 0.5, arrowsize = 0.5, labelsize = 4,
+  addEllipses = FALSE, ellipse.level=0.95,
+  title="All spots Tot, WtPer Biplot"
+  ) 
+
+ 
+```
+
+
+# Making Boxplots of the Data by Mineral Labels
+
+```{r}
+
+
+spots_all_long <- spots_all_wtper %>% 
+  dplyr::select(1, 4, 9:17) %>% 
+  pivot_longer(
+    names_to = "element",
+    values_to = "wtper",
+    names_repair = "minimal", 
+    cols = ends_with("wtper")
+  )
+
+spots_all_long %>% 
+  ggplot(aes(element, wtper, fill = element)) + 
+  geom_boxplot(outlier.shape = 21, 
+              # outlier.alpha = 0.6,
+             show.legend = FALSE, 
+             width = 0.5) + 
+  facet_wrap(~min_lab, ncol = 2, scales = "free_x") +  
+  theme_minimal()
+
+
+
+spots_all_long_steranes <- spots_all_wtper %>% 
+  dplyr::select(1, 6, 9:17) %>% 
+  pivot_longer(
+    names_to = "element",
+    values_to = "wtper",
+    names_repair = "minimal", 
+    cols = ends_with("wtper")
+  )
+
+spots_all_long_steranes %>% 
+  filter(steranes == "n_sters") %>% 
+  ggplot(aes(element, wtper, fill = element)) + 
+  geom_boxplot(outlier.shape = 21, 
+              # outlier.alpha = 0.6,
+             show.legend = FALSE, 
+             width = 0.5) + 
+  facet_wrap(~steranes, ncol = 2, scales = "free_x") +  
+  theme_minimal()
+
+
+# Jitter can display all of the data points associated with each measurmenet 
+# geom_jitter(alpha = 0.6, width = 0.5, shape = 21, color = "black") +
+
+
+
+```
+
+
+# Exploratory Plotting
+
+The goals of these plots are to:
+1. Explore the relationship between the variables and variable classifications. 
+2. Determine if the mean or total datasets better represent the data. 
+
+NOTE: I played with the concentration data and I had a realization, spots 9 and 11 have higher apparent concentrations, but this could be because I used a higher probe current energy in those spots (95 keV vs. 50 for spots 15 and 16). This is the reason I'm ignoring apparent concentration
+
+### NOTE: This is the full list of elements with nothing removed
+
+df_reduced_reordered_full <- df_reduced %>% 
+  select(spot, spot, location, spectra, min_lab, mz_84, steranes, mineralogy, row_index, Ag_wtper, Al_wtper, C_wtper, Ca_wtper, Fe_wtper, O_wtper, P_wtper, S_wtper, Si_wtper, Mg_wtper, Zn_wtper, Na_wtper, K_wtper, Ti_wtper, In_wtper, Zr_wtper, Cl_wtper, F_wtper, Ar_wtper, Mo_wtper, Mn_wtper, Co_wtper,	Ni_wtper,	W_wtper,	Cr_wtper,	La_wtper,	Nd_wtper,	Yb_wtper,	Br_wtper,	Ta_wtper,	Te_wtper,	Ir_wtper,	U_wtper,	Sr_wtper,	Pr_wtper,	N_wtper,	I_wtper,Au_wtper, Y_wtper, Th_wtper, Ba_wtper)
+
+
+### For Wt Percent for ALL measured locations
+
+Here are plots for all of the measurements faceted by location. 
+
+```{r, eval = TRUE}
+spots_all_wtper_regional %>% 
+  ggplot(aes(spot)) +
+    scale_color_brewer(palette = "Set1") +
+    geom_point(aes(y = Ag_wtper, color = "Ag"), size = 2, alpha = 1) + 
+    geom_point(aes(y = Al_wtper, color = "Al"), size = 2, alpha = 1) +
+    geom_point(aes(y = C_wtper, color = "C"), size = 2, alpha = 1) + 
+    geom_point(aes(y = Ca_wtper, color = "Ca"), size = 2, alpha = 1) +
+    geom_point(aes(y = Fe_wtper, color = "Fe"), size = 2, alpha = 1) + 
+    geom_point(aes(y = O_wtper, color = "O"), size = 2, alpha = 1) +
+    geom_point(aes(y = P_wtper, color = "P"), size = 2, alpha = 1) + 
+    geom_point(aes(y = S_wtper, color = "S"), size = 2, alpha = 1) +
+    geom_point(aes(y = Si_wtper, color = "Si"), size = 2, alpha = 1) +
+    facet_wrap(~min_lab, ncol = 2, scales = "free_x")+ 
+    labs(
+    title = "Regional Sterane Locations by Composition  Mineraology", y = "Mineral wt.%"
+    ) + 
+    theme_minimal()
+
+
+spots_all_wtper %>% 
+  filter(spot == 9) %>% 
+  ggplot(aes(row_id)) +
+    scale_color_brewer(palette = "Set1") +
+    geom_point(aes(y = Ag_wtper, color = "Ag"), size = 2, alpha = 1) + 
+    geom_point(aes(y = Al_wtper, color = "Al"), size = 2, alpha = 1) +
+    geom_point(aes(y = C_wtper, color = "C"), size = 2, alpha = 1) + 
+    geom_point(aes(y = Ca_wtper, color = "Ca"), size = 2, alpha = 1) +
+    geom_point(aes(y = Fe_wtper, color = "Fe"), size = 2, alpha = 1) + 
+    geom_point(aes(y = O_wtper, color = "O"), size = 2, alpha = 1) +
+    geom_point(aes(y = P_wtper, color = "P"), size = 2, alpha = 1) + 
+    geom_point(aes(y = S_wtper, color = "S"), size = 2, alpha = 1) +
+    geom_point(aes(y = Si_wtper, color = "Si"), size = 2, alpha = 1) +
+    facet_wrap(~min_lab, ncol = 2, scales = "free_x")+ 
+    labs(
+    title = "Spot 9 All by Composition  Mineraology", y = "Mineral wt.%"
+    ) + 
+    theme_minimal()
+
+spots_all_wtper %>% 
+  filter(spot == 10) %>% 
+  ggplot(aes(row_id)) +
+    scale_color_brewer(palette = "Set1") +
+    geom_point(aes(y = Ag_wtper, color = "Ag"), size = 2, alpha = 1) + 
+    geom_point(aes(y = Al_wtper, color = "Al"), size = 2, alpha = 1) +
+    geom_point(aes(y = C_wtper, color = "C"), size = 2, alpha = 1) + 
+    geom_point(aes(y = Ca_wtper, color = "Ca"), size = 2, alpha = 1) +
+    geom_point(aes(y = Fe_wtper, color = "Fe"), size = 2, alpha = 1) + 
+    geom_point(aes(y = O_wtper, color = "O"), size = 2, alpha = 1) +
+    geom_point(aes(y = P_wtper, color = "P"), size = 2, alpha = 1) + 
+    geom_point(aes(y = S_wtper, color = "S"), size = 2, alpha = 1) +
+    geom_point(aes(y = Si_wtper, color = "Si"), size = 2, alpha = 1) +
+    facet_wrap(~min_lab, ncol = 2, scales = "free_x")+  
+    labs(
+    title = "Spot 10 All by Composition  Mineraology", y = "Mineral wt.%"
+    ) + 
+    theme_minimal()
+
+spots_all_wtper %>% 
+  filter(spot == 15) %>% 
+  ggplot(aes(row_id)) +
+    scale_color_brewer(palette = "Set1") +
+    geom_point(aes(y = Ag_wtper, color = "Ag"), size = 2, alpha = 1) + 
+    geom_point(aes(y = Al_wtper, color = "Al"), size = 2, alpha = 1) +
+    geom_point(aes(y = C_wtper, color = "C"), size = 2, alpha = 1) + 
+    geom_point(aes(y = Ca_wtper, color = "Ca"), size = 2, alpha = 1) +
+    geom_point(aes(y = Fe_wtper, color = "Fe"), size = 2, alpha = 1) + 
+    geom_point(aes(y = O_wtper, color = "O"), size = 2, alpha = 1) +
+    geom_point(aes(y = P_wtper, color = "P"), size = 2, alpha = 1) + 
+    geom_point(aes(y = S_wtper, color = "S"), size = 2, alpha = 1) +
+    geom_point(aes(y = Si_wtper, color = "Si"), size = 2, alpha = 1) +
+    facet_wrap(~min_lab, ncol = 2, scales = "free_x")+ 
+    labs(
+    title = "Spot 15 All by Composition  Mineraology", y = "Mineral wt.%"
+    ) + 
+    theme_minimal()
+
+spots_all_wtper %>% 
+  filter(spot == 15 & mz_84 == "y_84") %>% 
+  ggplot(aes(row_id)) +
+    scale_color_brewer(palette = "Set1") +
+    geom_point(aes(y = Ag_wtper, color = "Ag"), size = 2, alpha = 1) + 
+    geom_point(aes(y = Al_wtper, color = "Al"), size = 2, alpha = 1) +
+    geom_point(aes(y = C_wtper, color = "C"), size = 2, alpha = 1) + 
+    geom_point(aes(y = Ca_wtper, color = "Ca"), size = 2, alpha = 1) +
+    geom_point(aes(y = Fe_wtper, color = "Fe"), size = 2, alpha = 1) + 
+    geom_point(aes(y = O_wtper, color = "O"), size = 2, alpha = 1) +
+    geom_point(aes(y = P_wtper, color = "P"), size = 2, alpha = 1) + 
+    geom_point(aes(y = S_wtper, color = "S"), size = 2, alpha = 1) +
+    geom_point(aes(y = Si_wtper, color = "Si"), size = 2, alpha = 1) +
+    facet_wrap(~min_lab, ncol = 2, scales = "free_x")+ 
+    labs(
+    title = "Spot 15 mz_84 Loc by Composition  Mineraology", y = "Mineral wt.%"
+    ) + 
+    theme_minimal()
+
+spots_all_wtper %>% 
+  filter(spot == 16) %>% 
+  ggplot(aes(row_id)) +
+    scale_color_brewer(palette = "Set1") +
+    geom_point(aes(y = Ag_wtper, color = "Ag"), size = 2, alpha = 1) + 
+    geom_point(aes(y = Al_wtper, color = "Al"), size = 2, alpha = 1) +
+    geom_point(aes(y = C_wtper, color = "C"), size = 2, alpha = 1) + 
+    geom_point(aes(y = Ca_wtper, color = "Ca"), size = 2, alpha = 1) +
+    geom_point(aes(y = Fe_wtper, color = "Fe"), size = 2, alpha = 1) + 
+    geom_point(aes(y = O_wtper, color = "O"), size = 2, alpha = 1) +
+    geom_point(aes(y = P_wtper, color = "P"), size = 2, alpha = 1) + 
+    geom_point(aes(y = S_wtper, color = "S"), size = 2, alpha = 1) +
+    geom_point(aes(y = Si_wtper, color = "Si"), size = 2, alpha = 1) +
+    facet_wrap(~min_lab, ncol = 2, scales = "free_x")+ 
+    labs(
+    title = "Spot 16 All by Composition  Mineraology", y = "Mineral wt.%"
+    ) + 
+    theme_minimal()
+
+spots_all_wtper %>% 
+  filter(spot == 16 & mz_84 == "y_84") %>% 
+  ggplot(aes(row_id)) +
+    scale_color_brewer(palette = "Set1") +
+    geom_point(aes(y = Ag_wtper, color = "Ag"), size = 2, alpha = 1) + 
+    geom_point(aes(y = Al_wtper, color = "Al"), size = 2, alpha = 1) +
+    geom_point(aes(y = C_wtper, color = "C"), size = 2, alpha = 1) + 
+    geom_point(aes(y = Ca_wtper, color = "Ca"), size = 2, alpha = 1) +
+    geom_point(aes(y = Fe_wtper, color = "Fe"), size = 2, alpha = 1) + 
+    geom_point(aes(y = O_wtper, color = "O"), size = 2, alpha = 1) +
+    geom_point(aes(y = P_wtper, color = "P"), size = 2, alpha = 1) + 
+    geom_point(aes(y = S_wtper, color = "S"), size = 2, alpha = 1) +
+    geom_point(aes(y = Si_wtper, color = "Si"), size = 2, alpha = 1) +
+    facet_wrap(~min_lab, ncol = 2, scales = "free_x")+ 
+    labs(
+    title = "Spot 16 mz_84 Loc by Composition  Mineraology", y = "Mineral wt.%"
+    ) + 
+    theme_minimal()
+
+```
+
+
+
+## Intermediate plotting a question: What mineralogy are more likely to have a y_84 mineralogy?
+
+I had to break this into individual steps
+- Maybe there is a way to do it simpler, but this way worked. 
+
+# For the Point Measurements 
+
+```{r}
+#Making new datasets that counted the total number of columns with y_84 and total columns measured
+mz84_permin_y84 <- spots_all_wtper %>% 
+  #filter(spot == "15" | spot == "16") %>% 
+  filter(location != "regional" & location != "regional_2") %>% 
+  group_by(spot, min_lab) %>% 
+  filter(mz_84 == "y_84") %>% 
+  count() %>% 
+  rename( y_84 = n)
+
+mz84_permin_all84 <- spots_all_wtper %>% 
+  #filter(spot == "15" | spot == "16") %>% 
+  filter(location != "regional" & location != "regional_2") %>% 
+  group_by(spot, min_lab) %>% 
+  filter(mz_84 == "y_84" |mz_84 == "n_84") %>% 
+  count() %>% 
+  rename( all_84 = n)
+
+#merging the two new datasets, then cleaning the data
+mz84_permin <- merge(mz84_permin_y84, mz84_permin_all84, all.x = TRUE, all.y = TRUE)
+
+mz84_permin[is.na(mz84_permin)] <- 0
+
+#Finally calulating the y_84 per measured statistic
+mz84_permin <- mz84_permin %>% 
+  mutate(y84_permin = (y_84/ all_84)*100) 
+  
+
+#Plotting
+
+dodge = position_dodge(width = 0.1)
+
+mz84_permin %>% 
+  ggplot(aes(min_lab, y84_permin), color = min_lab) + 
+#  geom_boxplot(fill='#ECF0F1', color="black", lwd = 0.5, width = 0.6, alpha = 0.5) +
+  geom_point(aes(color = spot), shape = 15, size = 4, alpha = 0.8, position = dodge) + 
+  expand_limits(y = -5) +
+  labs(title = "Percent of y_84 per min_lab POINT", y = "Percent of Regions Conctainng m/z 84", x = "Compositinoal Regions") + 
+  scale_color_manual(values = c("#2E86C1", "#17A589","#E74C3C","#D68910" )) + 
+  #guides(color = "none") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 12),
+    legend.background = element_rect(fill = "white", size = 4, colour = "white"),
+    legend.justification = c(0, 1),
+    #legend.position = c(0, 1),
+    #axis.text.x = element_text(angle = 45),
+    axis.ticks = element_line(colour = "grey70", size = 0.1),
+    panel.grid.major = element_line(colour = "grey70", size = 0.1),
+    panel.grid.minor = element_blank()) 
+  
+
+```
+
+
+# For the Regional Measurements
+
+```{r}
+#Making new datasets that counted the total number of columns with y_84 and total columns measured
+mz84_permin_y84 <- spots_all_wtper_regional %>% 
+  #filter(spot == "15" | spot == "16") %>% 
+  #filter(location == "regional" & location == "regional_2") %>% 
+  group_by(spot, min_lab) %>% 
+  filter(mz_84 == "y_84") %>% 
+  count() %>% 
+  rename(y_84 = n)
+
+mz84_permin_all84 <- spots_all_wtper_regional %>% 
+  #filter(spot == "15" | spot == "16") %>% 
+  #filter(location == "regional" & location == "regional_2") %>% 
+  group_by(spot, min_lab) %>% 
+  filter(mz_84 == "y_84" |mz_84 == "n_84") %>% 
+  count() %>% 
+  rename(all_84 = n)
+
+#merging the two new datasets, then cleaning the data
+mz84_permin <- merge(mz84_permin_y84, mz84_permin_all84, all.x = TRUE, all.y = TRUE)
+
+mz84_permin[is.na(mz84_permin)] <- 0
+
+#Finally calulating the y_84 per measured statistic
+mz84_permin <- mz84_permin %>% 
+  mutate(y84_permin = (y_84/ all_84)*100) 
+  
+
+#Plotting
+
+dodge = position_dodge(width = 0.1)
+
+mz84_permin %>% 
+  ggplot(aes(min_lab, y84_permin), color = min_lab) + 
+#  geom_boxplot(fill='#ECF0F1', color="black", lwd = 0.5, width = 0.6, alpha = 0.5) +
+  geom_point(aes(color = spot), shape = 15, size = 4, alpha = 0.8, position = dodge) + 
+  expand_limits(y = -5) +
+  labs(title = "Percent of y_84 per min_lab REGIONAL", y = "Percent of Regions Conctainng m/z 84", x = "Compositinoal Regions") + 
+  scale_color_manual(values = c("#2E86C1", "#17A589","#E74C3C","#D68910" )) + 
+  #guides(color = "none") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 12),
+    legend.background = element_rect(fill = "white", size = 4, colour = "white"),
+    legend.justification = c(0, 1),
+    #legend.position = c(0, 1),
+    #axis.text.x = element_text(angle = 45),
+    axis.ticks = element_line(colour = "grey70", size = 0.1),
+    panel.grid.major = element_line(colour = "grey70", size = 0.1),
+    panel.grid.minor = element_blank())
+```
+
+
+
+# Exploratory plotting and analysis 
+
+## Pairs plotting
+
+The goal of the below pairs plot is to determine: 
+1. What relationships exist between individual components and Carbon
+2. What parts of the data I should exclude from linear regression models
+
+
+
+```{r, eval = TRUE}
+# First, the things I think are interesting
+# C, S, Fe, Si, O
+spots_all_wtper_filter <- spots_all_wtper %>% 
+  filter(C_wtper > 1 & S_wtper < 12.5 & Fe_wtper < 5 & Si_wtper < 30)  
+
+pairs(spots_all_wtper_filter)
+
+pairs(~C_wtper + S_wtper + Fe_wtper + Si_wtper + O_wtper, col = spots_all_wtper$min_lab, data = spots_all_wtper_filter)
+
+# Next, the elements I want to explore
+# Al, Ca, Ag, P
+spots_all_wtper_filter <- spots_all_wtper %>% 
+  filter(C_wtper > 1 & Al_wtper < 100 & Ca_wtper < 100 & Ag_wtper < 100 & P_wtper <100)  
+
+pairs(~C_wtper + Al_wtper + Ca_wtper + Ag_wtper + P_wtper, col = spots_all_wtper$min_lab, data = spots_all_wtper_filter)
+
+
+# # Next, the elements I should to explore
+# # Na, Mg, Ti, K
+spots_all_wtper_filter <- spots_all_wtper %>%
+   filter(C_wtper > 1 & Na_wtper < 1 & Mg_wtper < 2 & Ti_wtper < 4)
+
+pairs(~C_wtper + K_wtper + Ti_wtper + Mg_wtper + F_wtper, col = spots_all_wtper$min_lab, data = spots_all_wtper_filter)
+
+
+
+# pairs(~C_concentration + S_concentration + Fe_concentration + Si_concentration + O_concentration, col = spots_all_conc$mineralogy, data = spots_all_conc)
+
+```
+
+In the PCA analysis below, S and C are positively correlated. I want to plot S vs. C to see if I can observe any relationship. I also wanted to plot C and S vs other elements. This first code block is for experimenting with plots. The code block later is for making some meaningful plots. 
+
+```{r, eval = TRUE}
+spots_all_wtper %>% 
+  #filter(mineralogy != "dark_seds" & mineralogy != "mz84_seds") %>% 
+  #filter(C_wtper > 1 & S_wtper < 15) %>% 
+  ggplot(aes(S_wtper, C_wtper)) +
+    geom_point(aes(color = mz_84, shape = min_lab), 
+             size = 2, alpha = 0.4) + 
+  facet_wrap(~spot, ncol = 2, scales = "free") +
+  scale_color_brewer(palette = "Set1") +
+  labs(title = "C vs. S WtPer all") +
+  theme_minimal()
+
+spots_all_wtper %>% 
+  #filter(mineralogy != "dark_seds" & mineralogy != "mz84_seds") %>% 
+  filter(C_wtper > 1 & S_wtper < 12.5) %>% 
+  ggplot(aes(S_wtper, C_wtper)) +
+    geom_point(aes(color = mz_84, shape = min_lab), 
+             size = 2, alpha = 0.4) + 
+  facet_wrap(~spot, ncol = 2, scales = "free") +
+  scale_color_brewer(palette = "Set1") +
+  labs(title = "C vs. S WtPer all") +
+  theme_minimal()
+
+
+# spots_all_wtper %>% 
+#   filter( mineralogy == "mz84_seds" | mineralogy == "dark_seds") %>% 
+#   filter(C_wtper > 1 & S_wtper < 15) %>% 
+#   ggplot(aes(S_wtper, C_wtper)) +
+#     geom_point(aes(color = mineralogy, shape = spot), 
+#              size = 2, alpha = 0.4) + 
+#   facet_wrap(~spot, ncol = 2, scales = "free") +
+#   scale_color_brewer(palette = "Set1") +
+#   geom_smooth(method = "lm", se = FALSE)
+#   labs(title = "C vs. S WtPer all") +
+#   theme_minimal()
+```
+
+From playing with the above code block, I can plot:
+- A negative relationship between C and Si, C and O,  
+- A negative relationship between C and Fe, C and Mg, 
+- No relationship between C and Ca, C and P, C and Ag (except in the epoxy regions), K and C, C and Na (helps rule out surface contamination), C and Ti
+- A positive relationship between C and S
+
+I'm showing the potential relationships in the pars plot below. 
+
+Now highlighting the strongest relationships observed above including, C and S, C and Si, C and O and C and Fe. 
+- And focusing only on the mz84_ and dark_sed regions for clarity.  
+
+```{r, eval = TRUE}
+#C and S
+spots_all_wtper %>% 
+  #filter(mineralogy == "dark_seds" | mineralogy == "mz84_seds") %>% 
+  filter(C_wtper > 10 & S_wtper < 12.5) %>% 
+  ggplot(aes(S_wtper, C_wtper)) +
+  scale_color_brewer(palette = "Set1") +
+  geom_point(aes(color = mz_84, shape = spot), 
+             size = 2, alpha = 0.4) + 
+  labs(title = "C vs. S WtPer all") +
+  theme_minimal()
+
+#C and Si
+spots_all_wtper %>% 
+  #filter(mineralogy == "dark_seds" | mineralogy == "mz84_seds") %>% 
+  filter(C_wtper > 10 & Si_wtper < 30) %>% 
+  ggplot(aes(Si_wtper, C_wtper)) +
+  scale_color_brewer(palette = "Set1") +
+  geom_point(aes(color = mz_84, shape = spot), 
+             size = 2, alpha = 0.4) + 
+  labs(title = "C vs. Si WtPer all") +
+  theme_minimal()
+
+#C and O
+spots_all_wtper %>% 
+  #filter(mineralogy == "dark_seds" | mineralogy == "mz84_seds") %>% 
+  filter(C_wtper > 10 & Si_wtper < 30) %>% 
+  ggplot(aes(O_wtper, C_wtper)) +
+  scale_color_brewer(palette = "Set1") +
+  geom_point(aes(color = mz_84, shape = spot), 
+             size = 2, alpha = 0.4) + 
+  labs(title = "C vs. O WtPer all") +
+  theme_minimal()
+
+#C and Fe
+spots_all_wtper %>% 
+  #filter(mineralogy == "dark_seds" | mineralogy == "mz84_seds") %>% 
+  filter(C_wtper > 10 & Fe_wtper < 5) %>% 
+  ggplot(aes(Fe_wtper, C_wtper)) +
+  scale_color_brewer(palette = "Set1") +
+  geom_point(aes(color = mz_84, shape = spot), 
+             size = 2, alpha = 0.4) + 
+  labs(title = "C vs. Fe WtPer all") +
+  theme_minimal()
+
+```
+
+
+# -- Machine Learning --
+
+The goal of machine learning for me is to determine which variables effect the amount of C in a sample.
+
+I played with a lot of techniques that get complex quickly. I found it easiest to get rid of categorical variables, and test C_wtper relative to mineralogy. This at least serves as a guide towards different regions. 
+
+Here are the videos i watched to learn machine learning: 
+-	https://www.youtube.com/watch?v=el8xP38SWdk 
+-	https://www.youtube.co m/watch?v=z8PRU46I3NY
+-	https://www.youtube.com/watch?v=SeyghJ5cdm4
+
+
+```{r}
+
+
+ml_spots_all_train <- spots_all_wtper %>% 
+  #filter(spot == 9) %>% 
+  filter(min_lab != "epoxy") %>% 
+  #filter(min_lab == "org_40_60") %>% 
+  select(-location, -min_lab, -row_id, - row_index, -mineralogy, - spectra, - steranes) %>% 
+  select(-mz_84, -spot) #Optional select
+  #select(-K_wtper, -Na_wtper, -Mg_wtper, -P_wtper, -Ti_wtper)
+
+
+ml_spots_all_test <- spots_all_wtper %>% 
+  #filter(spot == 9) %>% 
+  #filter(min_lab != "epoxy") %>% 
+  #filter(min_lab == "org_40_60") %>% 
+  select(-location, -min_lab, - row_index, -row_id, -mineralogy, - spectra, - steranes) %>% 
+  select(-mz_84, -spot) #Optional select
+   
+  #filter(C_wtper > 1 & S_wtper < 12.5) #%>%   
+  #select( - "Ag_wtper") 
+
+#ml_spots_all$steranes <- ifelse(ml_spots_all$steranes == "y_sters", 1, 0)
+
+# Trying Machine Learning
+set.seed(123)
+
+# This is how you train dummy variables, which are factor variables
+# This worked, but it just does the same thing as removing the factor columns. 
+
+dummy.vars <- dummyVars(~., data = ml_spots_all_train[ ,1:2])
+train.dummy <- predict(dummy.vars, ml_spots_all_train[ ,1:2])
+
+
+# Building a training set
+
+TrainingIndex <- createDataPartition(ml_spots_all_train$C_wtper, p=0.7, list = FALSE)
+train.control <- trainControl(method = "repeatedcv",
+                             number = 10,
+                            repeats = 3)
+
+TrainingSet <- ml_spots_all_train[TrainingIndex, ] #Training set, this can be specified via trainControl()
+TestingSet <- ml_spots_all_test[-TrainingIndex, ] #Test set
+
+#########
+
+# Build Training Model
+
+Model <- train(C_wtper ~ ., 
+               data = TrainingSet, 
+               method = "lm", 
+               na.action = na.omit, 
+               preProcess = c("scale", "center"), 
+               trControl = trainControl(method = "none"))
+
+# Apply model for prediction
+
+Model.training <- predict(Model, TrainingSet) #Apply model to make predictions on the training set
+Model.testing <- predict(Model, TestingSet) #Apply model to make predictions on the testing set
+
+# Model performance (Show scatter plot and performace metric)
+
+plot(TrainingSet$C_wtper, Model.training, col = "blue")
+plot(TestingSet$C_wtper, Model.testing, col = "blue")
+
+# Model performance summary
+summary(Model)
+
+
+# Calculating Person's correlation coefficient 
+
+rSquare_train <- (cor(TrainingSet$C_wtper, Model.training))^2
+rSquare_test <- (cor(TestingSet$C_wtper, Model.testing))^2
+
+print(rSquare_train)
+print(rSquare_test)
+
+```
+
+
+
+### Machine Learning Results
+
+From the machine learning portion, I can say that the most important elements to consider for organic carbon content (in order) are: Ag, O, Si, Ca, Fe, Al, S, P and K. This is for the whole dataset. 
+
+# Linear Regression Modelling
+
+Here, I'm showing that the linear regression models for organic rich and organic richest regions are different for the different spots. 
+
+```{r, eval = TRUE}
+#SPOT 9
+lm_spot_9_wtper <- spots_all_wtper %>% 
+  filter(spot == 9)  %>% 
+  filter(min_lab == "org_40_60" | min_lab == "org_60_100") %>% 
+  #filter(min_lab == "org_poor") %>% 
+  filter(C_wtper > 1 & S_wtper < 12.5)   
+
+lm_spot_9_wtper_res <- lm(C_wtper ~ S_wtper + O_wtper + Si_wtper + Ag_wtper + Al_wtper + Fe_wtper + Ca_wtper,  lm_spot_9_wtper)
+summary(lm_spot_9_wtper_res)
+#plot(lm_spot_9_wtper_res)
+
+#SPOT 11
+lm_spot_10_wtper <- spots_all_wtper %>% 
+  filter(spot == 10) %>% 
+  filter(min_lab == "org_40_60" | min_lab == "org_60_100") %>% 
+  #filter(min_lab == "org_poor") %>%
+  filter(C_wtper > 1 & S_wtper < 12.5)    
+
+lm_spot_10_wtper_res <- lm(C_wtper ~ S_wtper + O_wtper + Si_wtper + Ag_wtper + Al_wtper + Fe_wtper + Ca_wtper, lm_spot_10_wtper)
+summary(lm_spot_10_wtper_res)
+#plot(lm_spot_11_wtper_res)
+
+#SPOT 15
+lm_spot_15_wtper <- spots_all_wtper %>% 
+  filter(spot == 15) %>% 
+  filter(min_lab == "org_40_60" | min_lab == "org_60_100") %>% 
+  #filter(min_lab == "org_poor") %>%
+  filter(C_wtper > 1 & S_wtper < 12.5) 
+
+lm_spot_15_wtper_res <- lm(C_wtper ~ S_wtper + O_wtper + Si_wtper + Ag_wtper + Al_wtper + Fe_wtper + Ca_wtper, lm_spot_15_wtper)
+summary(lm_spot_15_wtper_res)
+#plot(lm_spot_15_wtper_res)
+
+#SPOT 16
+lm_spot_16_wtper <- spots_all_wtper %>% 
+  filter(spot == 16) %>% 
+  filter(min_lab == "org_40_60" | min_lab == "org_60_100") %>% 
+  #filter(min_lab == "org_poor") %>%
+  filter(C_wtper > 1 & S_wtper < 12.5)  
+
+lm_spot_16_wtper_res <- lm(C_wtper ~ S_wtper + O_wtper + Si_wtper + Ag_wtper + Al_wtper + Fe_wtper + Ca_wtper, lm_spot_16_wtper)
+summary(lm_spot_16_wtper_res)
+#plot(lm_spot_16_wtper_res)
+
+  
+```
+
+
+### Interpreting the above models
+
+This video is great for interpreting the lm's including
+plots: https://www.youtube.com/watch?v=rfH7pCFvFT0
+the summary: https://www.youtube.com/watch?v=7WPfuHLCn_k
+
+To consider, there are outliers for each spot as observable in the Cook's distance plots. I went through Spot 9 and kept all of the variables that are predictors of the variance in C. In contrast to what I was thinking, S actually does not predict the presence of C in the org_rich and org_richest regions, it just co-occurs. 
+
+Something to consider is if these parameters are true in mz_84 regions. Let's do that now below: 
+
+#### Linear models in mz_84 regions
+
+```{r, eval = TRUE}
+#SPOT 9
+lm_spot_9_y84 <- spots_all_wtper %>% 
+  filter(spot == 9) %>% 
+  filter(mz_84 == "y_84" & min_lab != "epoxy") %>% 
+  filter(min_lab == "org_20_40" | min_lab == "org_40_60" | min_lab == "org_60_100") %>% 
+  filter(C_wtper > 1 & S_wtper < 12.5) #%>%   
+  #select( - "Ag_wtper") 
+
+lm_spot_9_y84_res <- lm(C_wtper ~ S_wtper + O_wtper + Si_wtper + Fe_wtper + Ag_wtper,  lm_spot_9_y84)
+summary(lm_spot_9_y84_res)
+#plot(lm_spot_9_y84_res)
+
+#SPOT 11
+lm_spot_10_y84 <- spots_all_wtper %>% 
+  filter(spot == 10) %>% 
+  filter(mz_84 == "y_84" & min_lab != "epoxy") %>% 
+  filter(min_lab == "org_20_40" | min_lab == "org_40_60" | min_lab == "org_60_100") %>% 
+  filter(C_wtper > 1 & S_wtper < 12.5) #%>%   
+  #select( - "Ag_wtper") 
+
+lm_spot_10_y84_res <- lm(C_wtper ~ S_wtper + O_wtper + Si_wtper + Fe_wtper + Ag_wtper, lm_spot_10_y84)
+summary(lm_spot_10_y84_res)
+#(lm_spot_11_y84_res)
+
+#SPOT 15
+lm_spot_15_y84 <- spots_all_wtper %>% 
+  filter(spot == 15) %>% 
+  filter(mz_84 == "y_84" & min_lab != "epoxy") %>% 
+  filter(min_lab == "org_20_40" | min_lab == "org_40_60" | min_lab == "org_60_100") %>% 
+  filter(C_wtper > 1 & S_wtper < 12.5) #%>%   
+  #select( - "Ag_wtper") 
+
+lm_spot_15_y84_res <- lm(C_wtper ~ S_wtper + O_wtper + Si_wtper + Fe_wtper + Ag_wtper, lm_spot_15_y84)
+summary(lm_spot_15_y84_res)
+#plot(lm_spot_15_y84_res)
+
+#SPOT 16
+lm_spot_16_y84 <- spots_all_wtper %>% 
+  filter(spot == 16) %>% 
+  filter(mz_84 == "y_84" & min_lab != "epoxy") %>% 
+  filter(min_lab == "org_20_40" | min_lab == "org_40_60" | min_lab == "org_60_100") %>% 
+  filter(C_wtper > 1 & S_wtper < 12.5) #%>%   
+  #select( - "Ag_wtper")   
+
+lm_spot_16_y84_res <- lm(C_wtper ~ S_wtper + O_wtper + Si_wtper + Fe_wtper + Ag_wtper, lm_spot_16_y84)
+summary(lm_spot_16_y84_res)
+#plot(lm_spot_16_y84_res)
+
+  
+```
+
+
+
+
+
+
+
+# Additional PCA plots
+
+```{r}
+
+
+fviz_pca_biplot(spots_wtper_PCA, axes = c(1,3),
+  geom.ind = c("point"), pointshape = 16, alpha.ind = 0.6,
+  habillage = spots_all_wtper$min_lab,
+  repel = TRUE, palette = "Set1",
+  col.var = "Black", alpha.var = 0.5, arrowsize = 0.5, labelsize = 4,
+  addEllipses = FALSE, ellipse.level=0.95,
+  title="All spots Tot, WtPer Biplot"
+  ) 
+
+fviz_pca_biplot(spots_wtper_PCA, axes = c(1,2),
+  geom.ind = c("point"), pointshape = 16, alpha.ind = 0.6,
+  habillage = spots_all_wtper$steranes,
+  repel = TRUE, palette = "Set1",
+  col.var = "Black", alpha.var = 0.5, arrowsize = 0.5, labelsize = 4,
+  addEllipses = FALSE, ellipse.level=0.95,
+  title="All spots Tot, WtPer Biplot"
+  ) 
+
+
+#FOR TOTAL DATASET - EPOXY
+#Step 1.
+eig.val4 <- get_eigenvalue(spots_wtper_PCA_nE)
+eig.val4
+
+PCAvardata4 <- get_pca_var(spots_wtper_PCA_nE)
+print(PCAvardata4$coord)
+
+#Step 2, make the biplot
+fviz_pca_biplot(spots_wtper_PCA_nE,
+  geom.ind = c("point"), pointshape = 16, alpha.ind = 0.6,
+  habillage = spots_all_wtper_nE$min_lab,
+  repel = TRUE, palette = "Set1",
+  col.var = "Black", alpha.var = 0.5, arrowsize = 0.5, labelsize = 4,
+  addEllipses = FALSE, ellipse.level=0.95,
+  title="All spots Tot, WtPer Biplot nE"
+  ) 
+
+
+#FOR TOTAL DATASET - EPOXY - PHOS
+#Step 1, getting eigen values
+eig.val4 <- get_eigenvalue(spots_wtper_PCA_nE_nP)
+eig.val4
+
+PCAvardata4 <- get_pca_var(spots_wtper_PCA_nE_nP)
+print(PCAvardata4$coord)
+
+#Step 2, make the biplot
+fviz_pca_biplot(spots_wtper_PCA_nE_nP,
+  geom.ind = c("point"), pointshape = 16, alpha.ind = 0.6,
+  habillage = spots_all_wtper_nE_nP$min_lab,
+  #habillage = spots_all_wtper_nE_nP$mz_84,
+  repel = TRUE, palette = "Set1",
+  col.var = "Black", alpha.var = 0.5, arrowsize = 0.5, labelsize = 4,
+  addEllipses = FALSE, ellipse.level=0.95,
+  title="All spots Tot, WtPer Biplot nE, nP"
+  ) 
+
+fviz_pca_biplot(spots_wtper_PCA_nE_nP,
+  geom.ind = c("point"), pointshape = 16, alpha.ind = 0.6,
+  habillage = spots_all_wtper_nE_nP$steranes,
+  #habillage = spots_all_wtper_nE_nP$mz_84,
+  repel = TRUE, palette = "Set1",
+  col.var = "Black", alpha.var = 0.5, arrowsize = 0.5, labelsize = 4,
+  addEllipses = FALSE, ellipse.level=0.95,
+  title="All spots Tot, WtPer Biplot nE, nP"
+  ) 
+
+#FOR TOTAL DATASET - EPOXY - PHOS - Fe-rich
+#Step 1, getting eigen values
+eig.val4 <- get_eigenvalue(spots_wtper_PCA_nE_nP_nFe)
+eig.val4
+
+PCAvardata4 <- get_pca_var(spots_wtper_PCA_nE_nP_nFe)
+print(PCAvardata4$coord)
+
+#Step 2, make the biplot
+fviz_pca_biplot(spots_wtper_PCA_nE_nP_nFe,
+  geom.ind = c("point"), pointshape = 16, alpha.ind = 0.6,
+  habillage = spots_all_wtper_nE_nP_nFe$min_lab,
+  #habillage = spots_all_wtper_nE_nP$mz_84,
+  repel = TRUE, palette = "Set1",
+  col.var = "Black", alpha.var = 0.5, arrowsize = 0.5, labelsize = 4,
+  addEllipses = FALSE, ellipse.level=0.95,
+  title="All spots Tot, WtPer Biplot nE, nP, nFe"
+  ) 
+
+fviz_pca_biplot(spots_wtper_PCA_nE_nP_nFe,
+  geom.ind = c("point"), pointshape = 16, alpha.ind = 0.6,
+  habillage = spots_all_wtper_nE_nP_nFe$steranes,
+  #habillage = spots_all_wtper_nE_nP$mz_84,
+  repel = TRUE, palette = "Set1",
+  col.var = "Black", alpha.var = 0.5, arrowsize = 0.5, labelsize = 4,
+  addEllipses = FALSE, ellipse.level=0.95,
+  title="All spots Tot, WtPer Biplot nE, nP, nFe"
+  ) 
+
+
+spots_wtper_PCA_nE_nP_nInorg
+
+#FOR TOTAL DATASET - Org_rich only
+#Step 1, getting eigen values
+eig.val4 <- get_eigenvalue(spots_wtper_PCA_nE_nP_nInorg)
+eig.val4
+
+PCAvardata5 <- get_pca_var(spots_wtper_PCA_nE_nP_nInorg)
+print(PCAvardata5$coord)
+
+#Step 2, make the biplot
+fviz_pca_biplot(spots_wtper_PCA_nE_nP_nInorg,
+  geom.ind = c("point"), pointshape = 16, alpha.ind = 0.6,
+  habillage = spots_all_wtper_nE_nP_nInorg$min_lab,
+  #habillage = spots_all_wtper_nE_nP$mz_84,
+  repel = TRUE, palette = "Set1",
+  col.var = "Black", alpha.var = 0.5, arrowsize = 0.5, labelsize = 4,
+  addEllipses = FALSE, ellipse.level=0.95,
+  title="All spots Tot, WtPer Biplot nInorg"
+  ) 
+
+fviz_pca_biplot(spots_wtper_PCA_nE_nP_nInorg,
+  geom.ind = c("point"), pointshape = 16, alpha.ind = 0.6,
+  habillage = spots_all_wtper_nE_nP_nInorg$steranes,
+  #habillage = spots_all_wtper_nE_nP$mz_84,
+  repel = TRUE, palette = "Set1",
+  col.var = "Black", alpha.var = 0.5, arrowsize = 0.5, labelsize = 4,
+  addEllipses = FALSE, ellipse.level=0.95,
+  title="All spots Tot, WtPer Biplot nInorg"
+  ) 
+
+# fviz_pca_biplot(spots_wtper_PCA_nE_nP,
+#   geom.ind = c("point"), pointshape = 16, alpha.ind = 0.6,
+#   #habillage = spots_all_wtper_nE_nP$min_lab,
+#   habillage = spots_all_wtper_nE_nP$spot,
+#   repel = TRUE, palette = "Set1",
+#   col.var = "Black", alpha.var = 0.8, arrowsize = 0.5, labelsize = 4,
+#   addEllipses = FALSE, ellipse.level=0.95,
+#   title="All spots Tot, WtPer Biplot nE, nP"
+#   )
+  
+# #FOR JUST ORGANIC RICH Region
+# #Step 1, getting eigen values
+# eig.val4 <- get_eigenvalue(spots_wtper_PCA_org_rich)
+# eig.val4
+# 
+# PCAvardata4 <- get_pca_var(spots_wtper_PCA_org_rich)
+# print(PCAvardata4$coord)
+# 
+# #Step 2, make the biplot
+# fviz_pca_biplot(spots_wtper_PCA_org_rich,
+#   geom.ind = c("point"), pointshape = 16, alpha.ind = 0.8,
+#   habillage = spots_all_org_rich$spot,
+#   repel = TRUE, palette = "Set1",
+#   col.var = "Black", alpha.var = 0.8, arrowsize = 0.5, labelsize = 4,
+#   addEllipses = FALSE, ellipse.level=0.95,
+#   title="All spots org_rich"
+#   ) 
+# 
+# fviz_pca_biplot(spots_wtper_PCA_org_rich,
+#   geom.ind = c("point"), pointshape = 16, alpha.ind = 0.8,
+#   axes = c(1,2), 
+#   habillage = spots_all_org_rich$steranes,
+#   repel = TRUE, palette = "Set1",
+#   col.var = "Black", alpha.var = 0.8, arrowsize = 0.5, labelsize = 4,
+#   addEllipses = FALSE, ellipse.level=0.95,
+#   title="All spots org_rich"
+#   ) 
+
+# #FOR JUST ORGANIC RICHEST Region
+# #Step 1, getting eigen values
+# eig.val4 <- get_eigenvalue(spots_wtper_PCA_org_richest)
+# eig.val4
+# 
+# PCAvardata4 <- get_pca_var(spots_wtper_PCA_org_richest)
+# print(PCAvardata4$coord)
+# 
+# #Step 2, make the biplot
+# fviz_pca_biplot(spots_wtper_PCA_org_richest,
+#   geom.ind = c("point"), pointshape = 16, alpha.ind = 0.8,
+#   habillage = spots_all_org_richest$steranes,
+#   axes = c(1,2),
+#   repel = TRUE, palette = "Set1",
+#   col.var = "Black", alpha.var = 0.8, arrowsize = 0.5, labelsize = 4,
+#   addEllipses = FALSE, ellipse.level=0.95,
+#   title="All spots org_richest"
+#   ) 
+
+# # FOR JUST ORGANIC POOR Regions
+# #Step 1, getting eigen values
+# eig.val4 <- get_eigenvalue(spots_wtper_PCA_org_poor)
+# eig.val4
+# 
+# PCAvardata4 <- get_pca_var(spots_wtper_PCA_org_poor)
+# print(PCAvardata4$coord)
+# 
+# #Step 2, make the biplot
+# fviz_pca_biplot(spots_wtper_PCA_org_poor,
+#   geom.ind = c("point"), pointshape = 16, alpha.ind = 0.8,
+#   habillage = spots_all_org_poor$steranes,
+#   repel = TRUE, palette = "Set1",
+#   col.var = "Black", alpha.var = 0.8, arrowsize = 0.5, labelsize = 4,
+#   addEllipses = FALSE, ellipse.level=0.95,
+#   title="All spots org_poor"
+#   ) 
+
+```
+
+
+
+# Playing with PCA Visualization
+
+- Here I am making it more streamlined to visualize the PCA plots for the total dataset above. 
+
+```{r fig.height=7, fig.width=10, message=TRUE}
+
+
+#my_col <- c(org_60_100, org_40_60, org_20_40, 
+          #  org_0_20 ,  S_rich,   Ca_rich, 
+          #  phoc,       epoxy)
+
+
+my_cols <- c("#FF0000", "#0072B2", "#009E73", 
+             "#56B4E9" ,"#F0E442", "#CC79A7", 
+             "#E69F00", "#000000")
+
+
+#Step 2, make the biplot
+fviz_pca_biplot(spots_wtper_PCA, axes = c(1,2), 
+  geom.ind = c("point"), pointshape = 16, alpha.ind = 1,
+  habillage = spots_all_wtper$min_lab,
+  repel = TRUE, 
+  palette = my_cols,
+  col.var = "Grey", alpha.var = 0.5, arrowsize = 0.8, labelsize = 5,
+  addEllipses = FALSE, ellipse.level=0.95,
+  title="All spots Tot, WtPer Biplot"
+  ) 
+
+#Step 2, make the biplot
+fviz_pca_biplot(spots_wtper_PCA, axes = c(1 ,3), 
+  geom.ind = c("point"), pointshape = 16, alpha.ind = 1,
+  habillage = spots_all_wtper$min_lab,
+  repel = TRUE, 
+  palette = my_cols,
+  col.var = "Grey", alpha.var = 0.5, arrowsize = 0.8, labelsize = 5,
+  addEllipses = FALSE, ellipse.level=0.95,
+  title="All spots Tot, WtPer Biplot"
+  ) 
+
+#Step 2, make the biplot
+fviz_pca_biplot(spots_wtper_PCA, axes = c(2,3), 
+  geom.ind = c("point"), pointshape = 16, alpha.ind = 1,
+  habillage = spots_all_wtper$min_lab,
+  repel = TRUE, 
+  palette = my_cols,
+  col.var = "Grey", alpha.var = 0.5, arrowsize = 0.8, labelsize = 5,
+  addEllipses = FALSE, ellipse.level=0.95,
+  title="All spots Tot, WtPer Biplot"
+  ) 
+
+```
+
+
+
+
+
+
+
+## Cluster Analysis 
+
+### UMAP Clustering
+
+Victoria recommended using a different clustering technique called Uniform Manifold Approximation and Projection (UNMAP)
+
+```{r}
+library(umap)
+
+
+spots_wtper_umap <- spots_all_wtper[,8:17]
+spots_wtper_meta <- spots_all_wtper[,1:8]
+
+
+set.seed(1234)
+
+test_umap <- spots_all_wtper %>% 
+  select(where(is.numeric)) %>% 
+  column_to_rownames("row_index") %>% 
+  umap()
+
+
+umap_df <- test_umap$layout %>% 
+  as.data.frame() %>% 
+  rename(UMAP1 = "V1",
+         UMAP2 = "V2") %>% 
+  mutate(row_index=row_number()) %>% 
+  inner_join(spots_wtper_meta, by = "row_index")
+
+umap_df %>% 
+  ggplot(aes(x = UMAP1, 
+             y = UMAP2, 
+             color = min_lab, 
+             shape = steranes)) +
+  geom_point() + 
+  labs(x = "UMAP1", 
+       y = "UMAP2", 
+       subtitle = "Baby's First UMAP Plot")
+
+```
+
+
+
+Ok this is closer still!  
+
+```{r fig.height=20, fig.width=40, eval = FALSE}
+# remove missing values and unused columns 
+spots_all_wtper_cluster <- spots_all_wtper %>% 
+  na.omit(spots_all_wtper) 
+
+spots_all_wtper_cluster_nE <- spots_all_wtper_nE %>% 
+  na.omit(spots_all_wtper_cluster_nE ) 
+
+spots_all_wtper_cluster_nE_nP <- spots_all_wtper_nE_nP %>% 
+  na.omit(spots_all_wtper_cluster_nE_nP) 
+
+# spots_all_wtper_mean_cluster <- spots_all_wtper_mean %>% 
+#   na.omit(spots_all_wtper_mean_cluster) 
+# 
+# spots_all_wtper_mean_cluster_nE <- spots_all_wtper_mean_nE  %>% 
+#   na.omit(spots_all_wtper_mean_cluster_nE) 
+# 
+# spots_all_wtper_mean_cluster_nE_nP <- spots_all_wtper_mean_nE_nP  %>% 
+#   na.omit(spots_all_wtper_mean_cluster_nE_nP) 
+
+# creating and visualizing a distance matrix
+#spots_all_wtper_cluster %>% 
+#  get_dist() %>% 
+#  fviz_dist(gradient = list(low = "#00AFBB", mid = "white", high = "#FC4E07"))
+
+
+#Cluster Trees/ Dendrograms
+#cluster tree/ dendrogram using Ward method
+#Three steps to analysis: 
+  #1. computing distance
+  #2. making the clusters
+  #3. plotting the clusters
+spots_all_wtper_cluster %>% 
+  dist(method = "euclidean") %>% 
+  hclust(method = "ward.D") %>% 
+  plot(labels = spots_all_wtper_cluster$min_lab, 
+       cex = 1, hang = -1, main = "Data Cluster Tree Tot")
+
+spots_all_wtper_cluster_nE %>% 
+  dist(method = "euclidean") %>% 
+  hclust(method = "ward.D") %>% 
+  plot(labels = spots_all_wtper_cluster_nE $min_lab, 
+       cex = 1, hang = -1, main = "Data Cluster Tree Tot No Epoxy")
+
+spots_all_wtper_cluster_nE_nP %>% 
+  dist(method = "euclidean") %>% 
+  hclust(method = "ward.D") %>% 
+  plot(labels = spots_all_wtper_cluster_nE_nP$min_lab, 
+       cex = 1, hang = -1, main = "Data Cluster Tree Tot No Epoxy, No Phos")
+
+# spots_all_wtper_mean_cluster %>% 
+#   dist(method = "euclidean") %>% 
+#   hclust(method = "ward.D") %>% 
+#   plot(labels = spots_all_wtper_mean_cluster$min_lab, 
+#        cex = 1, hang = -1, main = "Data Cluster Tree Mean")
+# 
+# spots_all_wtper_mean_cluster_nE %>% 
+#   dist(method = "euclidean") %>% 
+#   hclust(method = "ward.D") %>% 
+#   plot(labels = spots_all_wtper_mean_cluster_nE$min_lab, 
+#        cex = 1, hang = -1, main = "Data Cluster Tree Mean No Epoxy")
+# 
+# spots_all_wtper_mean_cluster_nE_nP %>% 
+#   dist(method = "euclidean") %>% 
+#   hclust(method = "ward.D") %>% 
+#   plot(labels = spots_all_wtper_mean_cluster_nE_nP$min_lab, 
+#        cex = 1, hang = -1, main = "Data Cluster Tree Mean No Epoxy, No Phos")
+
+
+```
+ 
+### K means Clustering
+ 
+Determining the optimal number of clusters. Breaking it into two code chunks because it's pretty big
+
+Optimal number of cluster's 1:
+
+```{r, eval = FALSE}
+#Have to reduce data dimensions
+spots_tot_cluster <- spots_all_wtper_cluster %>%
+#  filter(mineralogy != "mz84_seds") %>% 
+  select(Ag_wtper, Al_wtper, C_wtper, Ca_wtper, Fe_wtper, O_wtper, P_wtper, S_wtper, Si_wtper)
+ 
+spots_tot_cluster_nE <- spots_all_wtper_cluster_nE %>%
+#  filter(mineralogy != "mz84_seds") %>% 
+  select(Ag_wtper, Al_wtper, C_wtper, Ca_wtper, Fe_wtper, O_wtper, P_wtper, S_wtper, Si_wtper)
+
+spots_tot_cluster_nE_nP <- spots_all_wtper_cluster_nE_nP %>%
+#  filter(mineralogy != "mz84_seds") %>% 
+ select(Ag_wtper, Al_wtper, C_wtper, Ca_wtper, Fe_wtper, O_wtper, P_wtper, S_wtper, Si_wtper)
+
+
+
+# I have no idea why this doesn't work.  None. 
+# spots_mean_cluster <- spots_all_wtper_mean_cluster %>%
+#    select(Ag_mean, Al_mean, C_mean, Ca_mean, Fe_mean, K_mean, Mg_mean, Na_mean, O_mean, P_mean, S_mean, Si_mean, Ti_mean) 
+# 
+# spots_mean_cluster_nE <- spots_all_wtper_mean_cluster_nE %>%
+# #  filter(mineralogy != "mz84_seds") %>% 
+#   select(Ag_mean, Al_mean, C_mean, Ca_mean, Fe_mean, K_mean, Mg_mean, Na_mean, O_mean, P_mean, S_mean, Si_mean, Ti_mean)
+# 
+# spots_mean_cluster_nE_nP <- spots_all_wtper_mean_cluster_nE_nP %>%
+# #  filter(mineralogy != "mz84_seds") %>% 
+#   select(Ag_mean, Al_mean, C_mean, Ca_mean, Fe_mean, K_mean, Mg_mean, Na_mean, O_mean, P_mean, S_mean, Si_mean, Ti_mean)
+
+
+#Using several methods to determine the optimal number of clusters
+#This is the Elbow Method
+# set.seed(123)
+# fviz_nbclust(spots_tot_cluster, hcut, method = "wss", k.max = 10) +
+#   ggtitle("tot_cluster")
+# 
+# fviz_nbclust(spots_tot_cluster_nE, hcut, method = "wss") +
+#   ggtitle("tot_cluster_nE")
+# 
+# fviz_nbclust(spots_tot_cluster_nE_nP, hcut, method = "wss") +
+#   ggtitle("tot_cluster_nE_nP")
+# 
+# fviz_nbclust(spots_mean_cluster, hcut, method = "silhouette", k.max = 10) +
+#   ggtitle("mean_cluster")
+# 
+# fviz_nbclust(spots_mean_cluster_nE, hcut, method = "wss") +
+#   ggtitle("mean_cluster_nE")
+# 
+# fviz_nbclust(spots_mean_cluster_nE_nP, hcut, method = "wss") +
+#   ggtitle("mean_cluster_nE_nP")
+
+```
+
+### DB Scan Clustering
+
+```{r, eval = FALSE}
+#Playing real-quick with Density Clustering (DB scan)
+# library(dbscan)
+# #
+# # #Calculatig an Epsilon Value, the optimal value ends up being 10
+# # # k is the min number of values per cluster, abline finds the radius of the neighborhoods around a pont p(referred to as epsilon in most text)
+# spots_all_longer %>%
+#   select()
+# kNNdistplot(spots_tot_cluster_nE_nP, k=10)
+# abline(h=12, col="red")
+# #
+# # # Doing the actual cluster analysis
+# set.seed(1234)
+# db = dbscan(spots_tot_cluster_nE_nP, 7, 3, borderPoints = FALSE)
+# db
+# 
+# hullplot(spots_tot_cluster_nE_nP, db$cluster)
+
+#This method worked but it isn't ideal:
+# - Upside, it does handle outliers;
+# - Downside, it doesn't deal with clusters of different sizes well. AND it seems to not work well with data with a lot of different variables.
+```
+
+
+### Gaussian Mixture Model Clustering
+
+This can be done in several ways. First, I can look at optimal number of clusters using the ClusterR package. 
+- The downside of this package is that producing plots is difficult. 
+
+```{r, eval = FALSE}
+library(ClusterR)
+
+GMM_test <- GMM(spots_tot_cluster, 2, 
+                dist_mode = "maha_dist", 
+                seed_mode = "random_subset", 
+                km_iter = 10000, 
+                em_iter = 10000, 
+                verbose = F)
+
+GMM_test <- GMM(spots_tot_cluster_nE_nP, 2, 
+                dist_mode = "maha_dist", 
+                seed_mode = "random_subset", 
+                km_iter = 10000, 
+                em_iter = 10000, 
+                verbose = F)
+
+
+
+
+opt_gmm_1 <- Optimal_Clusters_GMM(spots_tot_cluster, max_clusters = 10, criterion = "BIC", 
+                               dist_mode = "maha_dist", seed_mode = "random_subset",
+                               km_iter = 10000, em_iter = 10000, var_floor = 1e-10, 
+                               plot_data = T, seed = 123)
+
+
+opt_gmm_2 <- Optimal_Clusters_GMM(spots_tot_cluster_nE_nP, max_clusters = 10, criterion = "BIC", 
+                               dist_mode = "maha_dist", seed_mode = "random_subset",
+                               km_iter = 10000, em_iter = 10000, var_floor = 1e-10, 
+                               plot_data = T, seed = 123)
+
+```
+
+
+Optimal clusters 2
+
+```{r, eval = FALSE}
+
+#NUMBER 1 - spots_tot_cluster
+# function to compute average silhouette for k clusters
+avg_sil <- function(k) {
+  km.res <- kmeans(spots_tot_cluster, centers = k, nstart = 25)
+  ss <- silhouette(km.res$cluster, dist(spots_tot_cluster))
+  mean(ss[, 3])
+}
+
+# Compute and plot wss for k = 2 to k = 15
+k.values <- 2:15
+
+# extract avg silhouette for 2-15 clusters
+avg_sil_values <- map_dbl(k.values, avg_sil)
+
+plot(k.values, avg_sil_values,
+       type = "b", pch = 19, frame = FALSE,
+       xlab = "Number of clusters K",
+       ylab = "Average Silhouettes",
+       main = "spots_tot_cluster")
+
+fviz_nbclust(spots_tot_cluster, kmeans, method = "silhouette")
+
+# NUMBER 2 - spots_tot_cluster_nE
+avg_sil <- function(k) {
+  km.res <- kmeans(spots_tot_cluster_nE, centers = k, nstart = 25)
+  ss <- silhouette(km.res$cluster, dist(spots_tot_cluster_nE))
+  mean(ss[, 3])
+}
+
+# Compute and plot wss for k = 2 to k = 15
+k.values <- 2:15
+
+# extract avg silhouette for 2-15 clusters
+avg_sil_values <- map_dbl(k.values, avg_sil)
+
+plot(k.values, avg_sil_values,
+       type = "b", pch = 19, frame = FALSE,
+       xlab = "Number of clusters K",
+       ylab = "Average Silhouettes",
+       main = "spots_tot_cluster_nE")
+
+fviz_nbclust(spots_tot_cluster_nE, kmeans, method = "silhouette")
+
+# NUMBER 3 - spots_tot_cluster_nE_nP
+avg_sil <- function(k) {
+  km.res <- kmeans(spots_tot_cluster_nE_nP, centers = k, nstart = 25)
+  ss <- silhouette(km.res$cluster, dist(spots_tot_cluster_nE_nP))
+  mean(ss[, 3])
+}
+
+# Compute and plot wss for k = 2 to k = 15
+k.values <- 2:15
+
+# extract avg silhouette for 2-15 clusters
+avg_sil_values <- map_dbl(k.values, avg_sil)
+
+plot(k.values, avg_sil_values,
+       type = "b", pch = 19, frame = FALSE,
+       xlab = "Number of clusters K",
+       ylab = "Average Silhouettes",
+       main = "spots_tot_cluster_nE_nP")
+
+fviz_nbclust(spots_tot_cluster_nE_nP, kmeans, method = "silhouette")
+
+
+# # NUMBER 4 - spots_mean_cluster
+# avg_sil <- function(k) {
+#   km.res <- kmeans(spots_mean_cluster, centers = k, nstart = 25)
+#   ss <- silhouette(km.res$cluster, dist(spots_mean_cluster))
+#   mean(ss[, 3])
+# }
+# 
+# # Compute and plot wss for k = 2 to k = 15
+# k.values <- 2:15
+# 
+# # extract avg silhouette for 2-15 clusters
+# avg_sil_values <- map_dbl(k.values, avg_sil)
+# 
+# plot(k.values, avg_sil_values,
+#        type = "b", pch = 19, frame = FALSE,
+#        xlab = "Number of clusters K",
+#        ylab = "Average Silhouettes",
+#        main = "spots_mean_cluster")
+# 
+# fviz_nbclust(spots_mean_cluster, kmeans, method = "silhouette")
+
+
+# # NUMBER 5 - spots_mean_cluster_nE
+# avg_sil <- function(k) {
+#   km.res <- kmeans(spots_mean_cluster_nE, centers = k, nstart = 25)
+#   ss <- silhouette(km.res$cluster, dist(spots_mean_cluster_nE))
+#   mean(ss[, 3])
+# }
+# 
+# # Compute and plot wss for k = 2 to k = 15
+# k.values <- 2:15
+# 
+# # extract avg silhouette for 2-15 clusters
+# avg_sil_values <- map_dbl(k.values, avg_sil)
+# 
+# plot(k.values, avg_sil_values,
+#        type = "b", pch = 19, frame = FALSE,
+#        xlab = "Number of clusters K",
+#        ylab = "Average Silhouettes",
+#        main = "spots_mean_cluster_nE")
+# 
+# fviz_nbclust(spots_mean_cluster_nE, kmeans, method = "silhouette")
+
+
+# # NUMBER 6 - spots_mean_cluster_nE_nP
+# avg_sil <- function(k) {
+#   km.res <- kmeans(spots_mean_cluster_nE_nP, centers = k, nstart = 25)
+#   ss <- silhouette(km.res$cluster, dist(spots_mean_cluster_nE_nP))
+#   mean(ss[, 3])
+# }
+# 
+# # Compute and plot wss for k = 2 to k = 15
+# k.values <- 2:15
+# 
+# # extract avg silhouette for 2-15 clusters
+# avg_sil_values <- map_dbl(k.values, avg_sil)
+# 
+# plot(k.values, avg_sil_values,
+#        type = "b", pch = 19, frame = FALSE,
+#        xlab = "Number of clusters K",
+#        ylab = "Average Silhouettes",
+#        main = "spots_mean_cluster_nE_nP")
+# 
+# fviz_nbclust(spots_mean_cluster_nE_nP, kmeans, method = "silhouette")
+
+
+
+```
+
+Here, I'm making cluster digrams for all of the different data treatments. I've clustered the data according to the optimal number of clusters listed above, then I can adjust from here. 
+
+```{r, eval = FALSE}
+
+#Now, finally making some clusters
+
+# 1- FOR THE TOTAL DATASET - spots_tot_cluster
+datak_1 <- kmeans(spots_tot_cluster, centers = 5 , nstart = 25)
+  str(datak_1)
+
+fviz_cluster( 
+             datak_1, 
+             geom = c(), 
+             data = spots_tot_cluster, 
+             main = "spots_tot_cluster, clust = 2",
+             ggtheme = theme_minimal(),
+             ellipse.alpha = 0.1
+             ) +
+  geom_point(aes(color = spots_all_wtper$min_lab),  
+             size = 3) +
+  theme(legend.position = "top")
+
+
+# 2 - FOR THE TOTAL DATASET - spot15_tot_cluster_nE
+datak_2 <- kmeans(spots_tot_cluster_nE, centers = 4 , nstart = 25)
+  str(datak_2)
+
+fviz_cluster( 
+             datak_2, 
+             geom = c(), 
+             data = spots_tot_cluster_nE, 
+             main = "spots_tot_cluster_nE, clust = 4",
+             ggtheme = theme_minimal(),
+             ellipse.alpha = 0.1
+             ) +
+  geom_point(aes(color = spots_all_wtper_nE$min_lab),  
+             size = 3) +
+  theme(legend.position = "top")
+
+
+# 3 - FOR THE TOTAL DATASET - spot15_tot_cluster_nE_nP
+datak_3 <- kmeans(spots_tot_cluster_nE_nP, centers = 3 , nstart = 25)
+  str(datak_3)
+
+fviz_cluster( 
+             datak_3, 
+             geom = c(), 
+             data = spots_tot_cluster_nE_nP, 
+             main = "spots_tot_cluster_nE_nP, clust = 5",
+             ggtheme = theme_minimal(),
+             ellipse.alpha = 0.1
+             ) +
+  geom_point(aes(color = spots_all_wtper_nE_nP$min_lab),  
+             size = 3) +
+  theme(legend.position = "top")
+
+
+# 4 - FOR THE TOTAL DATASET - spot15_mean_cluster
+# datak_4 <- kmeans(spots_mean_cluster, centers = 2 , nstart = 25)
+#   str(datak_4)
+# 
+# fviz_cluster( 
+#              datak_4, 
+#              geom = c(), 
+#              data = spots_mean_cluster, 
+#              main = "spots_mean_cluster, clust = 2",
+#              ggtheme = theme_minimal(),
+#              ellipse.alpha = 0.1
+#              ) +
+#   geom_point(aes(color = spots_all_wtper_mean$min_lab),  
+#              size = 3) +
+#   theme(legend.position = "top")
+# 
+# # 5 - FOR THE TOTAL DATASET - spot15_mean_cluster_nE
+# datak_5 <- kmeans(spots_mean_cluster_nE, centers = 4 , nstart = 25)
+#   str(datak_5)
+# 
+# fviz_cluster( 
+#              datak_5, 
+#              geom = c(), 
+#              data = spots_mean_cluster_nE, 
+#              main = "spots_mean_cluster_nE, clust = 4",
+#              ggtheme = theme_minimal(),
+#              ellipse.alpha = 0.1
+#              ) +
+#   geom_point(aes(color = spot15_mean_nE$mineralology),  
+#              size = 3) +
+#   theme(legend.position = "top")
+# 
+# 
+# # 6 - FOR THE TOTAL DATASET - spot15_mean_cluster_nE_nP
+# datak_6 <- kmeans(spot15_mean_cluster_nE_nP, centers = 2 , nstart = 25)
+#   str(datak_6)
+# 
+# fviz_cluster( 
+#              datak_6, 
+#              geom = c(), 
+#              data = spot15_mean_cluster_nE_nP, 
+#              main = "spots_mean_cluster_nE_nP, clust = 2",
+#              ggtheme = theme_minimal(),
+#              ellipse.alpha = 0.1
+#              ) +
+#   geom_point(aes(color = spot15_mean_nE_nP$mineralology),  
+#              size = 3) +
+#   theme(legend.position = "top")
+
+```
+
+
+
+STOPPPED HERE, FWEW!
+
+TRYING TO PIVOT LONGER
+
+First, making the data into the long format. 
+
+```{r, eval = TRUE}
+
+spots_all_longer <- spots_all_wtper %>% 
+  select(1:16) %>% 
+  pivot_longer(
+    names_to = "mineral_wtper",
+    values_to = "wtper",
+    names_repair = "minimal", 
+    cols = ends_with("wtper")
+  )
+
+spots_all_longer$spot_loc <- paste(spots_all_longer$spot, "_", spots_all_longer$location) 
+spots_all_longer$spot_loc <- as.factor(spots_all_longer$spot_loc)
+spots_all_longer$min_lab <- as.factor(spots_all_longer$min_lab) 
+spots_all_longer$mineral_wtper <- as.factor(spots_all_longer$mineral_wtper)
+
+spots_all_longer <- spots_all_longer %>% 
+  select("spot", "spot_loc", "min_lab", "mineral_wtper", "wtper")
+
+#print(spot15_tot_longer)
+
+```
+
+Pivoting wider examples
+
+```{r, eval = FALSE}
+# spot15_tot_wider <- pivot_wider(spot15_tot_longer, 
+#             names_from = mineral_wtper, 
+#             values_from = wtper, 
+#             names_repair = "check_unique"
+#             )
+# 
+# spot15_tot_wider
+```
+
+
+
+NOW JUST PLAYING WITH IT
+
+```{r, eval= TRUE, fig.height=15, fig.width=15}
+
+spots_all_longer %>% 
+  filter(mineral_wtper == "C_wtper" | mineral_wtper == "S_wtper" | mineral_wtper == "Fe_wtper"| mineral_wtper == "O_wtper"| mineral_wtper == "Al_wtper"| mineral_wtper == "Si_wtper"| mineral_wtper == "Ca_wtper"| mineral_wtper == "P_wtper"| mineral_wtper == "Ag_wtper") %>% 
+  dplyr::group_by(spot_loc, min_lab, spot, mineral_wtper) %>% 
+  dplyr::summarize(
+            wtpermean = mean(wtper)) %>% 
+  ggplot(aes(spot_loc, wtpermean)) +
+  geom_point(aes(color = mineral_wtper, shape = spot)) +
+  theme_bw() +
+  scale_color_brewer(palette = "Spectral") + 
+  facet_wrap(~min_lab, ncol = 2, scales = "free") +
+  labs(title = "All Spots Mineral WtPer by Location",
+       x = "Location", 
+       y = "Mineral Wt. %")  + 
+    theme(axis.text.x = element_text(angle=50, hjust=1, 
+          size = 7),
+    )
+  
+# For a bar chart also, its ugly tho
+#geom_col(aes(color = mineralology, alpha = 0.1, fill = NULL)) +
+
+```
+
+
+# -- CUT CODE -- 
+## In order of appearence
+
+#### 3. Calculating the mean Wt Percentage by location and mineralogy
+
+- This creates the spots_all_wtper_mean dataset
+
+- Note that I need to directly call dplyr via dlpyr::group_by because ggplot loads the plyr package which would not return a grouped summary. 
+
+
+```{r, eval = TRUE, echo = FALSE}
+#Wt Percentage
+# spots_all_wtper_mean <- spots_all_wtper %>% 
+#   dplyr::group_by(spot, mz_84) %>% 
+#   dplyr::summarize(Ag_mean = mean(Ag_wtper), 
+#             Al_mean = mean(Al_wtper), 
+#             C_mean = mean(C_wtper), 
+#             Ca_mean = mean(Ca_wtper), 
+#             Fe_mean = mean(Fe_wtper),
+#            # K_mean = mean(K_wtper),
+#             Mg_mean = mean(Mg_wtper),
+#             Na_mean = mean(Na_wtper),
+#             O_mean = mean(O_wtper), 
+#             P_mean = mean(P_wtper), 
+#             S_mean = mean(S_wtper),
+#             Si_mean = mean(Si_wtper),
+#             Ti_mean = mean(Ti_wtper)) 
+
+```
+
+
+#### 4. Reclassifying the the spots_all_wtper_mean columns
+
+
+```{r, eval = TRUE}
+# And then doing the same for the mean datasets
+#Creating main designations
+# spots_all_wtper_mean$min_lab <- 0
+# spots_all_wtper_mean$min_lab[spots_all_wtper_mean$C_mean < 20] <- "org_0_20"
+# spots_all_wtper_mean$min_lab[spots_all_wtper_mean$Fe_mean > 4] <- "fe_rich"
+# spots_all_wtper_mean$min_lab[spots_all_wtper_mean$C_mean > 20] <- "org_20_40"
+# spots_all_wtper_mean$min_lab[spots_all_wtper_mean$C_mean > 40] <- "org_40_60"
+# spots_all_wtper_mean$min_lab[spots_all_wtper_mean$C_mean > 60] <- "org_60_100"
+# spots_all_wtper_mean$min_lab[spots_all_wtper_mean$Ag_mean > 10] <- "epoxy"
+# spots_all_wtper_mean$min_lab[spots_all_wtper_mean$P_mean > 5] <- "phos"
+# 
+# 
+# #Creating mz_84 designations
+# # spots_all_wtper_mean$mz_84 <- 0
+# # spots_all_wtper_mean$mz_84 <- if_else(spots_all_wtper_mean$mineralogy == "mz84_seds", "y_84", "n_84")
+# 
+# #Assigning Factor Levels
+# spots_all_wtper_mean$min_lab <- factor(spots_all_wtper_mean$min_lab, levels = c("org_60_100", "org_40_60", "org_20_40",  "org_0_20", "phos", "fe_rich", "epoxy"))
+# spots_all_wtper_mean$mz_84 <- factor(spots_all_wtper_mean$mz_84, levels = c("y_84", "n_84"))
+# spots_all_wtper_mean$steranes <- factor(spots_all_wtper_mean$steranes, levels = c("y_sters", "n_sters"))
+# 
+# unique(spots_all_wtper_mean$min_lab)
+# unique(spots_all_wtper_mean$mz_84)
+# 
+# #Assigning Levels
+# 
+# spots_all_wtper_mean <- spots_all_wtper_mean %>% 
+#   select(spot, location, min_lab, mz_84, steranes, Ag_mean, Al_mean, C_mean, Ca_mean, Fe_mean, Mg_mean, Na_mean, O_mean, P_mean, S_mean, Si_mean, Ti_mean)
+# 
+# 
+# write_csv(spots_all_wtper_mean, "spots_all_wtper_mean.csv")
+
+```
+
+
+### For Wt Percent for the MEAN locations averaged by spot number
+
+Faceted by location
+
+```{r, echo = FALSE}
+# spots_all_wtper_mean %>% 
+#   filter(mz_84 == "y_84") %>% 
+#   ggplot(aes(spot)) +
+#     scale_color_brewer(palette = "Set1") +
+#     geom_point(aes(y = Ag_mean, color = "Ag")) + 
+#     geom_point(aes(y = Al_mean, color = "Al")) +
+#     geom_point(aes(y = C_mean, color = "C")) + 
+#     geom_point(aes(y = Ca_mean, color = "Ca")) +
+#     geom_point(aes(y = Fe_mean, color = "Fe")) + 
+#     geom_point(aes(y = O_mean, color = "O")) +
+#     geom_point(aes(y = P_mean, color = "P")) + 
+#     geom_point(aes(y = S_mean, color = "S")) +
+#     geom_point(aes(y = Si_mean, color = "Si")) +
+#     facet_wrap(~spot, ncol = 2, scales = "free_x")+ 
+#     labs(
+#     title = "Spots All Mean by Composition  y_84", y = "Mineral wt.%"
+#     ) + 
+#     theme_minimal()
+# 
+# spots_all_wtper_mean %>% 
+#   filter(mz_84 == "n_84") %>% 
+#   ggplot(aes(spot)) +
+#     scale_color_brewer(palette = "Set1") +
+#     geom_point(aes(y = Ag_mean, color = "Ag")) + 
+#     geom_point(aes(y = Al_mean, color = "Al")) +
+#     geom_point(aes(y = C_mean, color = "C")) + 
+#     geom_point(aes(y = Ca_mean, color = "Ca")) +
+#     geom_point(aes(y = Fe_mean, color = "Fe")) + 
+#     geom_point(aes(y = O_mean, color = "O")) +
+#     geom_point(aes(y = P_mean, color = "P")) + 
+#     geom_point(aes(y = S_mean, color = "S")) +
+#     geom_point(aes(y = Si_mean, color = "Si")) +
+#     facet_wrap(~spot, ncol = 2, scales = "free_x")+ 
+#     labs(
+#     title = "Spots All Mean by Composition  n_84", y = "Mineral wt.%"
+#     ) + 
+#     theme_minimal()
+
+```
+
+
+### Now plotting the mean dataset by sample attributes. 
+
+- Faceting by min_lab labels 
+
+```{r, echo = FALSE}
+# spots_all_wtper_mean %>% 
+#   filter(min_lab == 'org_60_100') %>% 
+#   ggplot(aes(location)) +
+#     scale_color_brewer(palette = "Set1") +
+#     geom_point(aes(y = Ag_mean, color = "Ag")) + 
+#     geom_point(aes(y = Al_mean, color = "Al")) +
+#     geom_point(aes(y = C_mean, color = "C")) + 
+#     geom_point(aes(y = Ca_mean, color = "Ca")) +
+#     geom_point(aes(y = Fe_mean, color = "Fe")) + 
+#     geom_point(aes(y = O_mean, color = "O")) +
+#     geom_point(aes(y = P_mean, color = "P")) + 
+#     geom_point(aes(y = S_mean, color = "S")) +
+#     geom_point(aes(y = Si_mean, color = "Si")) +
+#     facet_wrap(~spot, ncol = 2, scales = "free_x")+ 
+#     labs(
+#     title = "Org_richest seds by Spot", y = "Mineral wt.%"
+#     ) + 
+#     theme_minimal()
+# 
+# spots_all_wtper_mean %>% 
+#   filter(min_lab == 'org_40_60') %>% 
+#   ggplot(aes(location)) +
+#     scale_color_brewer(palette = "Set1") +
+#     geom_point(aes(y = Ag_mean, color = "Ag")) + 
+#     geom_point(aes(y = Al_mean, color = "Al")) +
+#     geom_point(aes(y = C_mean, color = "C")) + 
+#     geom_point(aes(y = Ca_mean, color = "Ca")) +
+#     geom_point(aes(y = Fe_mean, color = "Fe")) + 
+#     geom_point(aes(y = O_mean, color = "O")) +
+#     geom_point(aes(y = P_mean, color = "P")) + 
+#     geom_point(aes(y = S_mean, color = "S")) +
+#     geom_point(aes(y = Si_mean, color = "Si")) +
+#     facet_wrap(~spot, ncol = 2, scales = "free_x")+ 
+#     labs(
+#     title = "Org_richer seds by Spot", y = "Mineral wt.%"
+#     ) + 
+#     theme_minimal()
+# 
+# spots_all_wtper_mean %>% 
+#   filter(min_lab == 'org_20_40') %>% 
+#   ggplot(aes(location)) +
+#     scale_color_brewer(palette = "Set1") +
+#     geom_point(aes(y = Ag_mean, color = "Ag")) + 
+#     geom_point(aes(y = Al_mean, color = "Al")) +
+#     geom_point(aes(y = C_mean, color = "C")) + 
+#     geom_point(aes(y = Ca_mean, color = "Ca")) +
+#     geom_point(aes(y = Fe_mean, color = "Fe")) + 
+#     geom_point(aes(y = O_mean, color = "O")) +
+#     geom_point(aes(y = P_mean, color = "P")) + 
+#     geom_point(aes(y = S_mean, color = "S")) +
+#     geom_point(aes(y = Si_mean, color = "Si")) +
+#     facet_wrap(~spot, ncol = 2, scales = "free_x")+ 
+#     labs(
+#     title = "Org_rich seds by Spot", y = "Mineral wt.%"
+#     ) + 
+#     theme_minimal()
+# 
+# spots_all_wtper_mean %>% 
+#   filter(min_lab == 'org_0_20') %>% 
+#   ggplot(aes(location)) +
+#     scale_color_brewer(palette = "Set1") +
+#     geom_point(aes(y = Ag_mean, color = "Ag")) + 
+#     geom_point(aes(y = Al_mean, color = "Al")) +
+#     geom_point(aes(y = C_mean, color = "C")) + 
+#     geom_point(aes(y = Ca_mean, color = "Ca")) +
+#     geom_point(aes(y = Fe_mean, color = "Fe")) + 
+#     geom_point(aes(y = O_mean, color = "O")) +
+#     geom_point(aes(y = P_mean, color = "P")) + 
+#     geom_point(aes(y = S_mean, color = "S")) +
+#     geom_point(aes(y = Si_mean, color = "Si")) +
+#     facet_wrap(~spot, ncol = 2, scales = "free_x")+ 
+#     labs(
+#     title = "Org_poor seds by Spot", y = "Mineral wt.%"
+#     ) + 
+#     theme_minimal()
+# 
+# spots_all_wtper_mean %>% 
+#   filter(min_lab == 'phos') %>% 
+#   ggplot(aes(location)) +
+#     scale_color_brewer(palette = "Set1") +
+#     geom_point(aes(y = Ag_mean, color = "Ag")) + 
+#     geom_point(aes(y = Al_mean, color = "Al")) +
+#     geom_point(aes(y = C_mean, color = "C")) + 
+#     geom_point(aes(y = Ca_mean, color = "Ca")) +
+#     geom_point(aes(y = Fe_mean, color = "Fe")) + 
+#     geom_point(aes(y = O_mean, color = "O")) +
+#     geom_point(aes(y = P_mean, color = "P")) + 
+#     geom_point(aes(y = S_mean, color = "S")) +
+#     geom_point(aes(y = Si_mean, color = "Si")) +
+#     facet_wrap(~spot, ncol = 2, scales = "free_x")+ 
+#     labs(
+#     title = "Phosphate seds by Spot", y = "Mineral wt.%"
+#     ) + 
+#     theme_minimal()
+# 
+# spots_all_wtper_mean %>% 
+#   filter(min_lab == 'fe_rich') %>% 
+#   ggplot(aes(location)) +
+#     scale_color_brewer(palette = "Set1") +
+#     geom_point(aes(y = Ag_mean, color = "Ag")) + 
+#     geom_point(aes(y = Al_mean, color = "Al")) +
+#     geom_point(aes(y = C_mean, color = "C")) + 
+#     geom_point(aes(y = Ca_mean, color = "Ca")) +
+#     geom_point(aes(y = Fe_mean, color = "Fe")) + 
+#     geom_point(aes(y = O_mean, color = "O")) +
+#     geom_point(aes(y = P_mean, color = "P")) + 
+#     geom_point(aes(y = S_mean, color = "S")) +
+#     geom_point(aes(y = Si_mean, color = "Si")) +
+#     facet_wrap(~spot, ncol = 2, scales = "free_x")+ 
+#     labs(
+#     title = "Fe_rich seds by Spot", y = "Mineral wt.%"
+#     ) + 
+#     theme_minimal()
+# 
+# spots_all_wtper_mean %>% 
+#   filter(min_lab == 'epoxy') %>% 
+#   ggplot(aes(location)) +
+#     scale_color_brewer(palette = "Set1") +
+#     geom_point(aes(y = Ag_mean, color = "Ag")) + 
+#     geom_point(aes(y = Al_mean, color = "Al")) +
+#     geom_point(aes(y = C_mean, color = "C")) + 
+#     geom_point(aes(y = Ca_mean, color = "Ca")) +
+#     geom_point(aes(y = Fe_mean, color = "Fe")) + 
+#     geom_point(aes(y = O_mean, color = "O")) +
+#     geom_point(aes(y = P_mean, color = "P")) + 
+#     geom_point(aes(y = S_mean, color = "S")) +
+#     geom_point(aes(y = Si_mean, color = "Si")) +
+#     facet_wrap(~spot, ncol = 2, scales = "free_x")+ 
+#     labs(
+#     title = "Epoxy seds by Spot", y = "Mineral wt.%"
+#     ) + 
+#     theme_minimal()
+
+```
+
+
+## Now plotting the mean by mineralogy
+
+PLotting the min_lab and faceting by wt.%
+
+```{r, echo = FALSE}
+
+# spots_all_wtper_mean %>% 
+#   ggplot(aes(min_lab)) +
+#    
+#     geom_point(aes(y = Ag_mean, color = "Ag"), size = 1, alpha = 0.6) + 
+#     geom_point(aes(y = Al_mean, color = "Al"), size = 1, alpha = 0.6) +
+#     geom_point(aes(y = C_mean, color = "C"), size = 1, alpha = 0.6) + 
+#     geom_point(aes(y = Ca_mean, color = "Ca"), size = 1, alpha = 0.6) +
+#     geom_point(aes(y = Fe_mean, color = "Fe"), size = 1, alpha = 0.6) + 
+#     geom_point(aes(y = O_mean, color = "O"), size = 1, alpha = 0.6) +
+#     geom_point(aes(y = P_mean, color = "P"), size = 1, alpha = 0.6) + 
+#     geom_point(aes(y = S_mean, color = "S"), size = 1, alpha = 0.6) +
+#     geom_point(aes(y = Si_mean, color = "Si"), size = 1, alpha = 0.6) +
+#     facet_wrap(~spot, ncol = 2, scales = "free_x") +
+#     labs(
+#     title = "All Mean Data by Spot", y = "Mineral wt.%"
+#     ) + 
+#     theme_minimal() +
+#     theme(axis.text.x = element_text(angle = 45))
+
+```
+
+
+
+### PCA
+
+
+
+```{r - Making the Biplots for the Mean Dataset, eval = TRUE}
+
+# #FOR TOTAL DATASET - EPOXY
+# #Step 1.
+# eig.val4 <- get_eigenvalue(spots_mean_PCA_nE)
+# eig.val4
+# 
+# PCAvardata4 <- get_pca_var(spots_mean_PCA_nE)
+# print(PCAvardata4$coord)
+# 
+# #Step 2, make the biplot
+# fviz_pca_biplot(spots_mean_PCA_nE,
+#   geom.ind = c("point"), pointshape = 16, alpha.ind = 0.6,
+#   habillage = spots_all_wtper_mean_nE$min_lab,
+#   repel = TRUE, palette = "Set1",
+#   col.var = "Black", alpha.var = 0.5, arrowsize = 0.5, labelsize = 4,
+#   addEllipses = FALSE, ellipse.level=0.95,
+#   title="All spots Mean, WtPer Biplot nE"
+#   )
+# 
+# 
+# #FOR TOTAL DATASET - EPOXY - PHOS
+# #Step 1, getting eigen values
+# eig.val4 <- get_eigenvalue(spots_mean_PCA_nE_nP)
+# eig.val4
+# 
+# PCAvardata4 <- get_pca_var(spots_mean_PCA_nE_nP)
+# print(PCAvardata4$coord)
+# 
+# #Step 2, make the biplot
+# fviz_pca_biplot(spots_mean_PCA_nE_nP,
+#   geom.ind = c("point"), pointshape = 16, alpha.ind = 0.6,
+#   axes = c(1,2),
+#   habillage = spots_all_wtper_mean_nE_nP$min_lab,
+#   #habillage = spots_all_wtper_mean_nE_nP$spot,
+#   repel = TRUE, palette = "Set1",
+#   col.var = "Black", alpha.var = 0.5, arrowsize = 0.5, labelsize = 4,
+#   addEllipses = FALSE, ellipse.level=0.95,
+#   title="All spots Mean, WtPer Biplot nE, nP"
+#   )
+# 
+# fviz_pca_biplot(spots_mean_PCA_nE_nP,
+#   geom.ind = c("point"), pointshape = 16, alpha.ind = 0.6,
+#   axes = c(1, 2),
+#   #habillage = spots_all_wtper_mean_nE_nP$mineralogy,
+#   habillage = spots_all_wtper_mean_nE_nP$spot,
+#   repel = TRUE, palette = "Set1",
+#   col.var = "Black", alpha.var = 0.5, arrowsize = 0.5, labelsize = 4,
+#   addEllipses = FALSE, ellipse.level=0.95,
+#   title="All spots Mean, WtPer Biplot nE, nP"
+#   )
+
+# #FOR MEAN DATASET
+# #FOR Total DATASET
+# #Step 1, getting eigen values
+# eig.val4 <- get_eigenvalue(spots_mean_PCA)
+# eig.val4
+# 
+# PCAvardata4 <- get_pca_var(spots_mean_PCA)
+# print(PCAvardata4$coord)
+# 
+# #Step 2, make the biplot
+# fviz_pca_biplot(spots_mean_PCA,
+#   geom.ind = c("point"), pointshape = 16, alpha.ind = 0.6,
+#   habillage = spots_all_wtper_mean$min_lab,
+#   repel = TRUE, palette = "Set1",
+#   col.var = "Black", alpha.var = 0.5, arrowsize = 0.5, labelsize = 4,
+#   addEllipses = FALSE, ellipse.level=0.95,
+#   title="All spots Mean, WtPer Biplot"
+#   ) 
+# 
+
+
+```
+
+### And for Org-rich and Org poor regions of the mean dataset
+
+```{r, eval = TRUE}
+# #FOR JUST ORGANIC RICH Region
+# #Step 1, getting eigen values
+# eig.val4 <- get_eigenvalue(spots_mean_PCA_org_rich)
+# eig.val4
+# 
+# PCAvardata4 <- get_pca_var(spots_mean_PCA_org_rich)
+# print(PCAvardata4$coord)
+# 
+# #Step 2, make the biplot
+# fviz_pca_biplot(spots_mean_PCA_org_rich,
+#   geom.ind = c("point"), pointshape = 16, alpha.ind = 0.8,
+#   habillage = spots_mean_org_rich$spot,
+#   repel = TRUE, palette = "Set1",
+#   col.var = "Black", alpha.var = 0.8, arrowsize = 0.5, labelsize = 4,
+#   addEllipses = FALSE, ellipse.level=0.95,
+#   title="All spots Mean org_rich"
+#   ) 
+# 
+# fviz_pca_biplot(spots_mean_PCA_org_rich,
+#   geom.ind = c("point"), pointshape = 16, alpha.ind = 0.8,
+#   habillage = spots_mean_org_rich$mz_84,
+#   repel = TRUE, palette = "Set1",
+#   col.var = "Black", alpha.var = 0.8, arrowsize = 0.5, labelsize = 4,
+#   addEllipses = FALSE, ellipse.level=0.95,
+#   title="All spots Mean org_rich"
+#   ) 
+# 
+# #FOR JUST ORGANIC POOR Regions
+# #Step 1, getting eigen values
+# eig.val4 <- get_eigenvalue(spots_mean_PCA_org_poor)
+# eig.val4
+# 
+# PCAvardata4 <- get_pca_var(spots_mean_PCA_org_poor)
+# print(PCAvardata4$coord)
+# 
+# #Step 2, make the biplot
+# fviz_pca_biplot(spots_mean_PCA_org_poor,
+#   geom.ind = c("point"), pointshape = 16, alpha.ind = 0.8,
+#   habillage = spots_mean_org_poor$spot,
+#   repel = TRUE, palette = "Set1",
+#   col.var = "Black", alpha.var = 0.8, arrowsize = 0.5, labelsize = 4,
+#   addEllipses = FALSE, ellipse.level=0.95,
+#   title="All spots Mean org_poor"
+#   ) 
+
+
+```
+
+
+##### PCA Contributions
+```{r fig.height=2, fig.width=2, eval = FALSE}
+# #Scree plot
+# fviz_eig(spots_mean_PCA,
+#          title = 'Scree Data',
+#          fil = '#6495ED',
+#          color = '#6495ED')
+# 
+# #Variable contributions with Ag (had to be broken up)
+# spot15_mean_PCA %>% 
+#   fviz_contrib(choice = "var", axes = 1, top = 10,
+#              title = 'Data PC1 Contribution with Ag',
+#              fil = '#6E8B3D',
+#              color = '#6E8B3D') 
+# 
+# spot15_mean_PCA %>% 
+#     fviz_contrib(choice = "var", axes = 2, top = 10,
+#              title = 'Data PC2 Contribution with Ag',
+#              fil = '#6E8B3D',
+#              color = '#6E8B3D') 
+# 
+# spot15_mean_PCA %>% 
+#   fviz_contrib(choice = "var", axes = 3, top = 10,
+#              title = 'Data PC3 Contribution with Ag',
+#              fil = '#6E8B3D',
+#              color = '#6E8B3D')
+# 
+# spot15_mean_PCA %>% 
+#   fviz_contrib(choice = "var", axes = 4, top = 10,
+#              title = 'Data PC4 Contribution with Ag',
+#              fil = '#6E8B3D',
+#              color = '#6E8B3D')
+# 
+# spot15_mean_PCA %>% 
+#   fviz_contrib(choice = "var", axes = 5, top = 10,
+#              title = 'Data PC5 Contribution with Ag',
+#              fil = '#6E8B3D',
+#              color = '#6E8B3D')
+
+```
+
+
+Now I'm going to try some alternative PCA plotting using ggbiplot that I saw in an online demo. When I don't scale the data, Ag is the dominant component driving variability. I think there is some insight gained from plotting the data in a 16 different ways including: 
+ - The mean dataset and the whole (not averaged) dataset as:
+    - Scaled, including silver
+    - Scaled, not including silver
+    - not Scaled, including silver
+    - not Scaled, not including silver
+
+
+```{r, eval = FALSE}
+#Make PCA datasets for the mean data
+#scaled, including silver
+# spot15_mean_PCA2_S_Ag <- spot15_mean %>% 
+#   select(-mineralology) %>% 
+#   prcomp(center = TRUE, scale. = TRUE)  
+# summary(spot15_mean_PCA2_S_Ag)
+# 
+# #scaled, not including silver
+# spot15_mean_PCA2_S_nAg <- spot15_mean %>% 
+#   select(-mineralology, -Ag_mean) %>% 
+#   prcomp(center = TRUE, scale. = TRUE)  
+# summary(spot15_mean_PCA2_S_nAg)
+# 
+# #not scaled, including silver
+# spot15_mean_PCA2_nS_Ag <- spot15_mean %>% 
+#   select(-mineralology) %>% 
+#   prcomp(center = TRUE, scale. = FALSE)  
+# summary(spot15_mean_PCA2_nS_Ag)
+# 
+# #not scaled, not including silver
+# spot15_mean_PCA2_nS_nAg <- spot15_mean %>% 
+#   select(-mineralology, -Ag_mean) %>% 
+#   prcomp(center = TRUE, scale. = FALSE)  
+# summary(spot15_mean_PCA2_nS_nAg)
+# 
+# #Making PCAs for the whole dataset
+# #scaled, including silver
+# spot15_whole_PCA2_S_Ag <- spot15_wtper %>% 
+#   select(-inbound, -mineralology) %>% 
+#   prcomp(center = TRUE, scale. = TRUE)  
+# summary(spot15_whole_PCA2_S_Ag)
+# 
+# #scaled, not including silver
+# spot15_whole_PCA2_S_nAg <- spot15_wtper %>% 
+#   select(-inbound, -mineralology, -Ag_wtper ) %>% 
+#   prcomp(center = TRUE, scale. = TRUE)  
+# summary(spot15_whole_PCA2_S_nAg)
+# 
+# #not scaled, including silver
+# spot15_whole_PCA2_nS_Ag <- spot15_wtper %>% 
+#   select(-inbound, -mineralology) %>% 
+#   prcomp(center = TRUE, scale. = FALSE)  
+# summary(spot15_whole_PCA2_nS_Ag)
+# 
+# #not scaled, not including silver
+# spot15_whole_PCA2_nS_nAg <- spot15_wtper %>% 
+#   select(-inbound, -mineralology, -Ag_wtper) %>% 
+#   prcomp(center = TRUE, scale. = FALSE)  
+# summary(spot15_whole_PCA2_nS_nAg)
+
+```
+
+Here, I was trying to plot using a different version of PCA analysis, but ggbiplot is not avaible for this version of R. Maybe I can play with this in the future, but I don't it's worth is right now. 
+
+```{r, eval = FALSE}
+
+#scaled, including silver
+# pca_mean_S_Ag <- ggbiplot(spot15_mean_PCA2_S_Ag, 
+#          color = spot15_mean$mineralology, 
+#   groups = spot15_mean$mineralology, ellipse = TRUE, cirlce = TRUE, 
+#   varname.size = 2, obs.scale = 4) +
+#   ggtitle("Mean, scaled, including silver") +
+#   theme_minimal() +
+#   scale_color_brewer(palette = 'RdYlBu') +
+#   theme(legend.direction = 'horizontal', legend.position = 'top')
+# 
+# pca_whole_S_Ag <- ggbiplot(spot15_whole_PCA2_S_Ag, 
+#          color = spot15_wtper$mineralology, 
+#   groups = spot15_wtper$mineralology, ellipse = TRUE, cirlce = TRUE, 
+#   varname.size = 2, obs.scale = 4) +
+#   ggtitle("Whole, scaled, including silver") +
+#   theme_minimal() +
+#   scale_color_brewer( palette = 'RdYlBu') +
+#   theme(legend.direction = 'horizontal', legend.position = 'top') 
+# 
+# pca_whole_S_Ag
+# 
+# pca_mean_S_Ag
+# 
+# plot_grid(pca_mean_S_Ag, pca_whole_S_Ag)
+
+```
+
+
+### Making Biplots for the organic-rich regions of the different spots
+
+```{r, eval = TRUE}
+# #This is two steps so I can retain the column length for habilage in the PCA plots
+# 
+# # -- SPOT 9 -- 
+# spots_wtper_PCA_org_rich_FILTER <- spots_all_org_rich %>% 
+#   filter(spot == 9 & mz_84 == "y_84")
+# spot_9_org_rich_PCA <- spots_wtper_PCA_org_rich_FILTER[ , 8:16] %>% 
+#   PCA(ncp = 5, axes = c(1,2), graph = FALSE)
+# 
+# eig.val4 <- get_eigenvalue(spot_9_org_rich_PCA)
+# eig.val4
+# 
+# PCAvardata4 <- get_pca_var(spot_9_org_rich_PCA)
+# print(PCAvardata4$coord)
+# 
+# #Step 2, make the biplot
+# fviz_pca_biplot(spot_9_org_rich_PCA,
+#   geom.ind = c("point"), pointshape = 16, alpha.ind = 0.8,
+#   habillage = spots_wtper_PCA_org_rich_FILTER$mz_84,
+#   repel = TRUE, palette = "Set1",
+#   col.var = "Black", alpha.var = 0.8, arrowsize = 0.5, labelsize = 4,
+#   addEllipses = FALSE, ellipse.level=0.95,
+#   title="Spot 9 mz 84 Regions"
+#   ) 
+# 
+# 
+# # -- SPOT 11 -- 
+# spots_wtper_PCA_org_rich_FILTER <- spots_all_org_rich %>% 
+#   filter(spot == 11 & mz_84 == "y_84")
+# spot_11_org_rich_PCA <- spots_wtper_PCA_org_rich_FILTER[ , 8:16] %>% 
+#   PCA(ncp = 5, axes = c(1,2), graph = FALSE)
+# 
+# eig.val4 <- get_eigenvalue(spot_11_org_rich_PCA)
+# eig.val4
+# 
+# PCAvardata4 <- get_pca_var(spot_11_org_rich_PCA)
+# print(PCAvardata4$coord)
+# 
+# #Step 2, make the biplot
+# fviz_pca_biplot(spot_11_org_rich_PCA,
+#   geom.ind = c("point"), pointshape = 16, alpha.ind = 0.8,
+#   habillage = spots_wtper_PCA_org_rich_FILTER$mz_84,
+#   repel = TRUE, palette = "Set1",
+#   col.var = "Black", alpha.var = 0.8, arrowsize = 0.5, labelsize = 4,
+#   addEllipses = FALSE, ellipse.level=0.95,
+#   title="Spot 11 mz 84 Region"
+#   ) 
+# 
+# 
+# # -- SPOT 15 --
+# spots_wtper_PCA_org_rich_FILTER <- spots_all_org_rich %>% 
+#   filter(spot == 15 & mz_84 == "y_84")
+# spot_15_org_rich_PCA <- spots_wtper_PCA_org_rich_FILTER[ , 8:16] %>% 
+#   PCA(ncp = 5, axes = c(1,2), graph = FALSE)
+# 
+# 
+# eig.val4 <- get_eigenvalue(spot_15_org_rich_PCA)
+# eig.val4
+# 
+# PCAvardata4 <- get_pca_var(spot_15_org_rich_PCA)
+# print(PCAvardata4$coord)
+# 
+# #Step 2, make the biplot
+# fviz_pca_biplot(spot_15_org_rich_PCA,
+#   geom.ind = c("point"), pointshape = 16, alpha.ind = 0.8,
+#   habillage = spots_wtper_PCA_org_rich_FILTER$mz_84,
+#   repel = TRUE, palette = "Set1",
+#   col.var = "Black", alpha.var = 0.8, arrowsize = 0.5, labelsize = 4,
+#   addEllipses = FALSE, ellipse.level=0.95,
+#   title="Spot 15 mz 84 Region"
+#   ) 
+
+
+# -- SPOT 16 --
+# spots_wtper_PCA_org_rich_FILTER <- spots_all_org_rich %>% 
+#   filter(spot == 16 & mz_84 == "y_84")
+# spot_16_org_rich_PCA <- spots_wtper_PCA_org_rich_FILTER[ , 7:19] %>% 
+#   PCA(ncp = 5, axes = c(1,2), graph = FALSE)
+# 
+# eig.val4 <- get_eigenvalue(spot_16_org_rich_PCA)
+# eig.val4
+# 
+# PCAvardata4 <- get_pca_var(spot_16_org_rich_PCA)
+# print(PCAvardata4$coord)
+# 
+# #Step 2, make the biplot
+# fviz_pca_biplot(spot_16_org_rich_PCA,
+#   geom.ind = c("point"), pointshape = 16, alpha.ind = 0.8,
+#   habillage = spots_wtper_PCA_org_rich_FILTER$mz_84,
+#   repel = TRUE, palette = "Set1",
+#   col.var = "Black", alpha.var = 0.8, arrowsize = 0.5, labelsize = 4,
+#   addEllipses = FALSE, ellipse.level=0.95,
+#   title="Spot 16 mz 84 Region"
+#   ) 
+
+
+```
